@@ -698,10 +698,19 @@ def main() -> int:
         return 0
 
     except InstallError:
+        # Errore gia' stampato in modo chiaro da fail(): usciamo.
         return 1
     except KeyboardInterrupt:
         logger.error("\nInstallazione interrotta dall'utente.")
         return 130
+    except Exception:
+        # Rete di sicurezza: qualsiasi errore NON previsto viene comunque
+        # salvato per intero (con traceback) in install.log.
+        logger.error("")
+        logger.error("[ERRORE IMPREVISTO] Si e' verificato un errore non gestito.")
+        logger.error("Il traceback completo e' stato salvato in: %s", LOG_FILE)
+        logger.debug("Traceback completo dell'errore imprevisto:", exc_info=True)
+        return 1
 
 
 if __name__ == "__main__":
