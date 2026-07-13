@@ -1,228 +1,181 @@
-# Guida all'installazione di TetraEar
+# TetraEar
 
-Questa guida ti accompagna passo passo nell'installazione **automatica** di
-[TetraEar](https://github.com/syrex1013/TetraEar) — un decoder TETRA per
-chiavette RTL-SDR — **prima su Ubuntu/Debian, poi su Windows**.
+<p align="center">
+  <img src="assets/banner.svg" alt="TetraEar - installer per decoder TETRA su RTL-SDR" width="100%" />
+</p>
 
-Gli installer sono pensati per essere avviati con un solo comando (o un
-doppio clic su Windows): scaricano da soli il codice di TetraEar,
-installano tutte le dipendenze di sistema e Python, e compilano il codec
-vocale. Non serve fare `git clone` a mano.
+<p align="center">
+  <b>Installer automatizzati per <a href="https://github.com/syrex1013/TetraEar">TetraEar</a> — decoder TETRA per chiavette RTL-SDR — su Ubuntu/Debian e Windows.</b>
+</p>
 
-> **Prima di iniziare, leggi il [Disclaimer legale](DISCLAIMER.md).**
-> L'uso di questo software è consentito solo per scopi didattici e di
-> ricerca e nel rispetto delle leggi locali.
+[English](#english) | [Italiano](#italiano)
 
 ---
 
-## Cosa ti serve (entrambi i sistemi)
+<a name="english"></a>
+## 🇬🇧 English
 
-- Una connessione a Internet.
-- Una chiavetta **RTL-SDR** (chip RTL2832U) con la sua antenna — necessaria
-  solo al momento di *usare* TetraEar, non per installarlo.
-- I permessi di amministratore (su Ubuntu ti verrà chiesta la password
-  `sudo`; su Windows la finestra si eleva da sola).
+### Overview
 
-Cosa fanno gli installer, in sintesi:
+**TetraEar** is a TETRA (Terrestrial Trunked Radio) decoder for RTL-SDR
+dongles (RTL2832U chip). This repository provides **fully automated
+installers** that, from a single command, set up everything TetraEar needs:
+system packages, the Python environment, the ETSI voice codec, and the
+RTL-SDR configuration.
 
-1. controllano Python e il sistema operativo;
-2. installano le dipendenze di sistema (compilatore, librerie RTL-SDR, Qt, audio);
-3. scaricano il codice sorgente di TetraEar;
-4. creano un ambiente virtuale Python (`.venv`) e installano i pacchetti `pip`;
-5. **configurano la chiavetta RTL-SDR** (su Linux in automatico: blacklist del
-   driver DVB-T, regole udev, permessi utente — vedi sotto);
-6. scaricano e compilano il codec vocale ETSI TETRA;
-7. verificano che tutto sia a posto.
+You don't need to clone TetraEar yourself — the installer downloads its
+source code automatically.
 
-## Il file di log `install.log` (leggimi)
+> ⚠️ **Read the [legal disclaimer](DISCLAIMER.md) before using this
+> software.** TetraEar is for educational and research purposes only, and
+> only where permitted by the laws of your jurisdiction.
 
-Ogni cosa che accade durante l'installazione — **ogni comando, ogni output e
-ogni errore, anche quelli imprevisti con il traceback completo** — viene
-salvato nel file **`install.log`**, creato nella stessa cartella
-dell'installer.
+### What the installers do
 
-Se qualcosa va storto:
+1. Check Python and the operating system.
+2. Install system dependencies (compiler, RTL-SDR libraries, Qt, audio).
+3. Download the TetraEar source code.
+4. Create a Python virtual environment (`.venv`) and install the `pip` packages.
+5. Configure the RTL-SDR dongle (on Linux, automatically).
+6. Download and compile the ETSI TETRA voice codec.
+7. Verify that everything is in place.
 
-- **Non serve copiare la schermata**: apri (o allega) direttamente `install.log`.
-- Il file è in modalità "aggiunta": conserva anche i tentativi precedenti, così
-  la cronologia non si perde tra un `--repair` e l'altro.
-- Per trovarlo: è accanto a `install_linux.py` / `install_windows.py`. Se hai
-  lanciato l'installer da `~/tetraear-setup`, sarà `~/tetraear-setup/install.log`.
+Everything that happens is recorded in **`install.log`**, next to the
+installer — attach that file if you ever need support.
 
-Puoi prendere quel file e sottopormelo così com'è: contiene tutto il necessario
-per diagnosticare il problema.
+### Requirements
 
-```bash
-# Linux: vedere le ultime righe / gli errori
-tail -n 50 install.log
-grep -i -E "errore|error|fallit|traceback" install.log
-```
+- An internet connection.
+- An **RTL-SDR** dongle (RTL2832U chip) with an antenna — needed only when
+  you *use* TetraEar, not to install it.
+- Administrator rights (Linux asks for your `sudo` password; on Windows the
+  window elevates itself).
 
 ---
 
-# Parte 1 — Ubuntu / Debian
+### 🐧 Ubuntu / Debian
 
-Testato su **Ubuntu 24.04** e **Debian 12** (dovrebbe funzionare anche su
-derivate recenti come Linux Mint e Pop!_OS).
+Tested on **Ubuntu 24.04** and **Debian 12** (should also work on recent
+derivatives such as Linux Mint and Pop!_OS).
 
-## 1.1 Scarica gli installer
-
-Clona questa repository ed entra nella cartella:
+**1. Install**
 
 ```bash
 git clone https://github.com/chiaraberti13/TetraEarUbuntu.git
 cd TetraEarUbuntu
-```
-
-> Se non hai `git`: `sudo apt update && sudo apt install -y git`, poi ripeti.
-
-## 1.2 Avvia l'installazione
-
-```bash
 python3 install_linux.py
 ```
 
-Durante l'esecuzione ti verrà chiesta la password di `sudo` (serve per
-installare i pacchetti di sistema con `apt`). Il processo può richiedere
-diversi minuti: sta scaricando pacchetti e compilando il codec.
+You'll be asked for your `sudo` password (to install system packages). The
+process takes a few minutes. When it finishes, the installer will have
+created a `TetraEar/` folder next to itself, containing the source code, the
+`.venv` environment and the compiled codec.
 
-Al termine vedrai un messaggio di riepilogo. L'installer crea, accanto a sé,
-una cartella `TetraEar/` con il codice sorgente, l'ambiente virtuale `.venv`
-e il codec compilato.
+**2. The RTL-SDR dongle is configured automatically**
 
-### La chiavetta RTL-SDR su Linux è configurata in automatico
+On Linux nothing is done by hand: the installer blacklists the DVB-T kernel
+drivers that would otherwise grab the dongle, installs/reloads the udev
+rules, and adds your user to the `plugdev` group.
 
-Su Ubuntu/Debian non devi fare nulla a mano: l'installer si occupa già di
-tutto quello che serve per **usare davvero** la chiavetta (chip RTL2832U):
+> ⚠️ **Required final step:** after installation, **unplug and re-plug** the
+> dongle (or reboot) so the driver blacklist and udev rules take effect.
+> Then check it with:
+>
+> ```bash
+> rtl_test -t
+> ```
+>
+> If it shows "Found 1 device(s)" you're good. `usb_claim_interface error -6`
+> means the DVB-T driver is still loaded → re-plug or reboot.
 
-- mette in **blacklist** i driver DVB-T del kernel (`dvb_usb_rtl28xxu` ecc.)
-  che altrimenti "occupano" la chiavetta e impediscono l'uso come SDR;
-- installa/ricarica le **regole udev** per accedere al dongle senza `sudo`;
-- aggiunge il tuo utente al gruppo **`plugdev`**.
-
-> ⚠️ **Passaggio finale obbligatorio**: dopo l'installazione **scollega e
-> ricollega** la chiavetta (oppure riavvia). Serve perché la blacklist del
-> driver e le nuove regole udev abbiano effetto. Se avevi già collegato la
-> chiavetta prima di lanciare l'installer, questo passaggio è indispensabile.
-
-Verifica che il sistema la veda (senza sudo):
-
-```bash
-rtl_test -t
-```
-
-Se compare l'elenco del dispositivo (es. "Found 1 device(s)") sei a posto. Se
-dice "usb_claim_interface error -6" significa che il driver DVB-T è ancora
-caricato: scollega/ricollega la chiavetta o riavvia.
-
-## 1.3 Avvia TetraEar
+**3. Run TetraEar**
 
 ```bash
 cd TetraEar
 source .venv/bin/activate
-python -m tetraear -f 392.225          # interfaccia grafica
-# oppure, senza GUI:
+python -m tetraear -f 392.225          # GUI
+# or, headless:
 python -m tetraear --no-gui -f 392.225 --auto-start
 ```
 
-(sostituisci `392.225` con la frequenza in MHz che ti interessa).
+(replace `392.225` with the frequency in MHz you want).
 
-## 1.4 Comandi utili
+**4. Useful commands**
 
-| Comando | Cosa fa |
+| Command | What it does |
 | --- | --- |
-| `python3 install_linux.py` | Installazione completa |
-| `python3 install_linux.py --repair` | Ricompila **solo** il codec vocale |
-| `python3 install_linux.py --uninstall` | Rimuove `.venv` e il codec (lascia il codice sorgente) |
+| `python3 install_linux.py` | Full installation |
+| `python3 install_linux.py --repair` | Recompile only the voice codec + re-apply fixes |
+| `python3 install_linux.py --uninstall` | Remove `.venv` and the codec (keeps the source) |
 
-## 1.5 Problemi comuni su Linux
+**5. Troubleshooting (Linux)**
 
-- **La GUI non parte, errore "could not load the Qt platform plugin xcb"**:
-  l'installer già installa le librerie Qt necessarie; se persiste, assicurati
-  di essere in una sessione grafica (non solo SSH senza display).
-- **La chiavetta RTL-SDR non viene rilevata / `usb_claim_interface error -6`**:
-  è il driver DVB-T ancora caricato. Scollega e ricollega la chiavetta (o
-  riavvia) — l'installer ha già messo il driver in blacklist, ma serve un
-  ricollegamento perché il kernel lo rilasci. Poi riprova con `rtl_test -t`.
-  In casi ostinati: `sudo modprobe -r dvb_usb_rtl28xxu` e ricollega.
-- **`rtl_test` chiede i permessi / funziona solo con sudo**: fai
-  logout/login una volta (serve ad attivare l'appartenenza al gruppo
-  `plugdev` aggiunta dall'installer).
-- **Il download del codec da ETSI fallisce**: riprova più tardi (a volte il
-  sito ETSI è temporaneamente irraggiungibile), poi esegui
-  `python3 install_linux.py --repair`.
-- **All'avvio: `undefined symbol: rtlsdr_set_dithering` (o `rtlsdr_set_gpio_output`, ecc.)**:
-  è un'incompatibilità tra `pyrtlsdr` e la `librtlsdr` di sistema (la versione
-  di Ubuntu non espone alcune funzioni presenti solo nel fork *keenerd*).
-  L'installer applica una piccola patch a `pyrtlsdr` che avvolge la libreria in
-  un proxy: i simboli mancanti diventano stub innocui (sono funzioni accessorie
-  non usate da TetraEar). Se hai aggiornato lo script, rilancia
-  `python3 install_linux.py` (o `--repair`). **Non dipende dalla chiavetta**:
-  l'errore compare all'`import`, prima di usare l'hardware.
+- **GUI won't start, "could not load the Qt platform plugin xcb"**: the
+  installer already installs the required Qt libraries; make sure you are in
+  a graphical session (not headless SSH).
+- **Dongle not detected / `usb_claim_interface error -6`**: the DVB-T driver
+  is still loaded. Unplug/re-plug the dongle (or reboot), then `rtl_test -t`.
+- **`rtl_test` works only with sudo**: log out and back in once (to activate
+  the `plugdev` group membership).
+- **On start: `undefined symbol: rtlsdr_set_dithering` (or similar)**: an
+  incompatibility between `pyrtlsdr` and Ubuntu's `librtlsdr` (which lacks
+  some functions found only in the *keenerd* fork). The installer patches
+  `pyrtlsdr` to tolerate the missing symbols; if you updated the script,
+  re-run `python3 install_linux.py` (or `--repair`). This is **not** related
+  to whether a dongle is connected — it happens at import time.
+- **ETSI codec download fails**: try again later (the ETSI site is sometimes
+  unreachable), then `python3 install_linux.py --repair`.
 
 ---
 
-# Parte 2 — Windows
+### 🪟 Windows
 
-Testato su **Windows 10** e **Windows 11** (64 bit).
+Tested on **Windows 10** and **Windows 11** (64-bit).
 
-## 2.1 Scarica gli installer
+**1. Get the installers**
 
-Se hai **Git per Windows**, la via più semplice è clonare la repository
-(Prompt dei comandi o PowerShell):
+With **Git for Windows** the simplest way is to clone the repository
+(Command Prompt or PowerShell):
 
 ```bat
 git clone https://github.com/chiaraberti13/TetraEarUbuntu.git
 cd TetraEarUbuntu
 ```
 
-In alternativa, senza Git: apri
-<https://github.com/chiaraberti13/TetraEarUbuntu>, premi **Code → Download ZIP**,
-estrai l'archivio e apri la cartella. In entrambi i casi ti servono, nella
-stessa cartella, i file `install_windows.bat` e `install_windows.py`.
+Without Git: open
+<https://github.com/chiaraberti13/TetraEarUbuntu>, click **Code → Download
+ZIP**, extract it and open the folder. Either way you need
+`install_windows.bat` and `install_windows.py` in the same folder.
 
-## 2.2 Avvia l'installazione
+**2. Install**
 
-**Fai doppio clic su `install_windows.bat`.**
+**Double-click `install_windows.bat`.**
 
-- Windows ti chiederà di **consentire le modifiche** (permessi di
-  amministratore): accetta.
-- Se Python non è installato, l'installer lo scarica e lo installa da solo
-  (tramite `winget`). In questo caso, quando te lo chiede, **chiudi la
-  finestra e rifai doppio clic** su `install_windows.bat`: alla seconda
-  esecuzione troverà Python nel PATH e proseguirà.
-- Il `.bat` avvia poi `install_windows.py`, che installa **Git** e **MSYS2**
-  (il compilatore C serve per il codec vocale), scarica TetraEar, crea
-  l'ambiente virtuale, installa i pacchetti Python e compila il codec.
+- Windows asks to **allow changes** (administrator rights): accept.
+- If Python isn't installed, the installer installs it via `winget`. When it
+  tells you to, **close the window and double-click `install_windows.bat`
+  again** — the second run finds Python in the PATH and continues.
+- The `.bat` then runs `install_windows.py`, which installs **Git** and
+  **MSYS2** (the C compiler needed for the codec), downloads TetraEar,
+  creates the environment, installs the Python packages and compiles the
+  codec.
 
-Il processo può richiedere parecchi minuti (MSYS2 e la toolchain sono
-diversi centinaia di MB). Al termine vedrai il messaggio di riepilogo.
+**3. RTL-SDR on Windows (a one-time semi-manual step)**
 
-## 2.3 RTL-SDR su Windows (passaggio semi-manuale)
+Unlike Linux, on Windows the dongle needs two manual steps, **once**:
 
-A differenza di Linux, su Windows la chiavetta RTL-SDR ha bisogno di due
-passaggi che vanno fatti a mano **una volta sola**:
+1. **WinUSB driver with Zadig** — download [Zadig](https://zadig.akeo.ie/),
+   plug in the dongle, then *Options → List All Devices*, select
+   **"Bulk-In, Interface (Interface 0)"** (or "RTL2832U"), choose the
+   **WinUSB** driver and press *Replace Driver*.
+2. **`rtlsdr.dll`** — download the Windows binaries of `librtlsdr` (e.g. from
+   the [librtlsdr releases](https://github.com/librtlsdr/librtlsdr/releases))
+   and copy `rtlsdr.dll` (plus the bundled `libusb` DLLs) into the `TetraEar`
+   folder created by the installer, or into a folder on your `PATH`.
 
-1. **Driver WinUSB con Zadig**
-   - Scarica Zadig da <https://zadig.akeo.ie/> e avvialo.
-   - Collega la chiavetta RTL-SDR.
-   - In Zadig: menu *Options → List All Devices*, seleziona **"Bulk-In,
-     Interface (Interface 0)"** (o "RTL2832U"), scegli il driver **WinUSB**
-     e premi *Replace Driver*.
-2. **Libreria `rtlsdr.dll`**
-   - Scarica i binari Windows di `librtlsdr` (ad es. dai rilasci di
-     [librtlsdr / rtl-sdr per Windows](https://github.com/librtlsdr/librtlsdr/releases)).
-   - Copia `rtlsdr.dll` (e le DLL di `libusb` incluse) nella cartella
-     `TetraEar` creata dall'installer, oppure in una cartella presente nel
-     `PATH` di sistema.
+**4. Run TetraEar**
 
-> Senza questi due passaggi TetraEar si avvia comunque, ma non riesce a
-> comunicare con la chiavetta.
-
-## 2.4 Avvia TetraEar
-
-Apri il **Prompt dei comandi** nella cartella `TetraEar` creata
-dall'installer:
+Open the **Command Prompt** in the `TetraEar` folder created by the installer:
 
 ```bat
 cd TetraEar
@@ -230,37 +183,244 @@ cd TetraEar
 python -m tetraear -f 392.225
 ```
 
-## 2.5 Comandi utili
+**5. Useful commands**
+
+| Command | What it does |
+| --- | --- |
+| double-click `install_windows.bat` | Full installation |
+| `python install_windows.py --repair` | Recompile only the voice codec + re-apply fixes |
+| `python install_windows.py --uninstall` | Remove `.venv` and the codec |
+
+**6. Troubleshooting (Windows)**
+
+- **"winget not available"**: update *App Installer* from the Microsoft
+  Store, or install Python, Git and MSYS2 by hand and re-run
+  `install_windows.py`.
+- **MSYS2 installed but not found**: reboot and re-run the installer.
+- **Codec won't compile**: run `python install_windows.py --repair`; if it
+  persists, check `install.log`.
+- **On start: `undefined symbol: rtlsdr_set_dithering`**: same fix as Linux —
+  the installer patches `pyrtlsdr`. Re-run the installer (or `--repair`).
+
+---
+
+### If something goes wrong (both systems)
+
+1. Open (or attach) **`install.log`**, created next to the installer — it
+   contains the full history and error details, including tracebacks of
+   unexpected errors. **This is the file to send when asking for help.**
+2. Use `--repair` if the problem is only the codec or the RTL-SDR
+   compatibility.
+3. To start over, use `--uninstall` and then reinstall.
+
+---
+
+<a name="italiano"></a>
+## 🇮🇹 Italiano
+
+### Panoramica
+
+**TetraEar** è un decoder TETRA (Terrestrial Trunked Radio) per chiavette
+RTL-SDR (chip RTL2832U). Questa repository contiene degli **installer
+completamente automatizzati** che, con un solo comando, preparano tutto ciò
+che serve a TetraEar: pacchetti di sistema, ambiente Python, codec vocale
+ETSI e configurazione della chiavetta RTL-SDR.
+
+Non devi clonare tu TetraEar: l'installer ne scarica il codice sorgente
+automaticamente.
+
+> ⚠️ **Leggi il [disclaimer legale](DISCLAIMER.md) prima di usare questo
+> software.** TetraEar è destinato solo a scopi didattici e di ricerca, e
+> solo dove consentito dalle leggi della tua giurisdizione.
+
+### Cosa fanno gli installer
+
+1. Controllano Python e il sistema operativo.
+2. Installano le dipendenze di sistema (compilatore, librerie RTL-SDR, Qt, audio).
+3. Scaricano il codice sorgente di TetraEar.
+4. Creano un ambiente virtuale Python (`.venv`) e installano i pacchetti `pip`.
+5. Configurano la chiavetta RTL-SDR (su Linux in automatico).
+6. Scaricano e compilano il codec vocale ETSI TETRA.
+7. Verificano che tutto sia a posto.
+
+Tutto ciò che accade viene registrato in **`install.log`**, accanto
+all'installer — allega quel file se hai bisogno di supporto.
+
+### Cosa ti serve
+
+- Una connessione a Internet.
+- Una chiavetta **RTL-SDR** (chip RTL2832U) con antenna — serve solo quando
+  *usi* TetraEar, non per installarlo.
+- I permessi di amministratore (su Linux la password `sudo`; su Windows la
+  finestra si eleva da sola).
+
+---
+
+### 🐧 Ubuntu / Debian
+
+Testato su **Ubuntu 24.04** e **Debian 12** (dovrebbe funzionare anche su
+derivate recenti come Linux Mint e Pop!_OS).
+
+**1. Installazione**
+
+```bash
+git clone https://github.com/chiaraberti13/TetraEarUbuntu.git
+cd TetraEarUbuntu
+python3 install_linux.py
+```
+
+Ti verrà chiesta la password di `sudo` (per installare i pacchetti di
+sistema). Il processo richiede qualche minuto. Al termine l'installer avrà
+creato accanto a sé una cartella `TetraEar/` con il codice sorgente,
+l'ambiente `.venv` e il codec compilato.
+
+**2. La chiavetta RTL-SDR è configurata in automatico**
+
+Su Linux non devi fare nulla a mano: l'installer mette in blacklist i driver
+DVB-T del kernel che altrimenti "occupano" la chiavetta, installa/ricarica le
+regole udev e aggiunge il tuo utente al gruppo `plugdev`.
+
+> ⚠️ **Passaggio finale obbligatorio:** dopo l'installazione **scollega e
+> ricollega** la chiavetta (oppure riavvia), così la blacklist del driver e
+> le regole udev hanno effetto. Poi verifica con:
+>
+> ```bash
+> rtl_test -t
+> ```
+>
+> Se compare "Found 1 device(s)" sei a posto. `usb_claim_interface error -6`
+> significa che il driver DVB-T è ancora caricato → ricollega o riavvia.
+
+**3. Avvia TetraEar**
+
+```bash
+cd TetraEar
+source .venv/bin/activate
+python -m tetraear -f 392.225          # interfaccia grafica
+# oppure senza GUI:
+python -m tetraear --no-gui -f 392.225 --auto-start
+```
+
+(sostituisci `392.225` con la frequenza in MHz che ti interessa).
+
+**4. Comandi utili**
+
+| Comando | Cosa fa |
+| --- | --- |
+| `python3 install_linux.py` | Installazione completa |
+| `python3 install_linux.py --repair` | Ricompila solo il codec vocale + riapplica le correzioni |
+| `python3 install_linux.py --uninstall` | Rimuove `.venv` e il codec (lascia il sorgente) |
+
+**5. Problemi comuni (Linux)**
+
+- **La GUI non parte, "could not load the Qt platform plugin xcb"**:
+  l'installer installa già le librerie Qt necessarie; assicurati di essere in
+  una sessione grafica (non SSH senza display).
+- **Chiavetta non rilevata / `usb_claim_interface error -6`**: il driver
+  DVB-T è ancora caricato. Scollega/ricollega la chiavetta (o riavvia), poi
+  `rtl_test -t`.
+- **`rtl_test` funziona solo con sudo**: fai logout/login una volta (per
+  attivare l'appartenenza al gruppo `plugdev`).
+- **All'avvio: `undefined symbol: rtlsdr_set_dithering` (o simile)**: è
+  un'incompatibilità tra `pyrtlsdr` e la `librtlsdr` di Ubuntu (che non ha
+  alcune funzioni presenti solo nel fork *keenerd*). L'installer applica una
+  patch a `pyrtlsdr` che tollera i simboli mancanti; se hai aggiornato lo
+  script, rilancia `python3 install_linux.py` (o `--repair`). **Non dipende**
+  dalla chiavetta: l'errore compare all'`import`.
+- **Il download del codec da ETSI fallisce**: riprova più tardi (a volte il
+  sito ETSI è irraggiungibile), poi `python3 install_linux.py --repair`.
+
+---
+
+### 🪟 Windows
+
+Testato su **Windows 10** e **Windows 11** (64 bit).
+
+**1. Scarica gli installer**
+
+Con **Git per Windows** la via più semplice è clonare la repository (Prompt
+dei comandi o PowerShell):
+
+```bat
+git clone https://github.com/chiaraberti13/TetraEarUbuntu.git
+cd TetraEarUbuntu
+```
+
+Senza Git: apri <https://github.com/chiaraberti13/TetraEarUbuntu>, premi
+**Code → Download ZIP**, estrai e apri la cartella. In entrambi i casi ti
+servono `install_windows.bat` e `install_windows.py` nella stessa cartella.
+
+**2. Installazione**
+
+**Fai doppio clic su `install_windows.bat`.**
+
+- Windows chiederà di **consentire le modifiche** (permessi di
+  amministratore): accetta.
+- Se Python non è installato, l'installer lo installa tramite `winget`.
+  Quando te lo chiede, **chiudi la finestra e rifai doppio clic** su
+  `install_windows.bat`: alla seconda esecuzione trova Python nel PATH e
+  prosegue.
+- Il `.bat` avvia poi `install_windows.py`, che installa **Git** e **MSYS2**
+  (il compilatore C per il codec), scarica TetraEar, crea l'ambiente,
+  installa i pacchetti Python e compila il codec.
+
+**3. RTL-SDR su Windows (passaggio semi-manuale, una volta sola)**
+
+A differenza di Linux, su Windows la chiavetta richiede due passaggi manuali,
+**una volta sola**:
+
+1. **Driver WinUSB con Zadig** — scarica [Zadig](https://zadig.akeo.ie/),
+   collega la chiavetta, poi *Options → List All Devices*, seleziona
+   **"Bulk-In, Interface (Interface 0)"** (o "RTL2832U"), scegli il driver
+   **WinUSB** e premi *Replace Driver*.
+2. **`rtlsdr.dll`** — scarica i binari Windows di `librtlsdr` (es. dai
+   [rilasci di librtlsdr](https://github.com/librtlsdr/librtlsdr/releases)) e
+   copia `rtlsdr.dll` (con le DLL di `libusb` incluse) nella cartella
+   `TetraEar` creata dall'installer, o in una cartella nel `PATH`.
+
+**4. Avvia TetraEar**
+
+Apri il **Prompt dei comandi** nella cartella `TetraEar` creata dall'installer:
+
+```bat
+cd TetraEar
+.venv\Scripts\activate
+python -m tetraear -f 392.225
+```
+
+**5. Comandi utili**
 
 | Comando | Cosa fa |
 | --- | --- |
 | doppio clic su `install_windows.bat` | Installazione completa |
-| `python install_windows.py --repair` | Ricompila **solo** il codec vocale |
+| `python install_windows.py --repair` | Ricompila solo il codec + riapplica le correzioni |
 | `python install_windows.py --uninstall` | Rimuove `.venv` e il codec |
 
-## 2.6 Problemi comuni su Windows
+**6. Problemi comuni (Windows)**
 
-- **"winget non è disponibile"**: aggiorna l'app *Programma di installazione
-  app* dal Microsoft Store, oppure installa Python, Git e MSYS2 a mano e
-  rilancia `install_windows.py`.
-- **MSYS2 installato ma non trovato**: riavvia il PC e rilancia l'installer.
-- **Il codec non si compila**: esegui `python install_windows.py --repair`;
-  se il problema persiste, controlla `install.log`.
-- **La GUI non parte**: assicurati che l'installazione dei pacchetti `pip`
-  (in particolare PyQt6) sia andata a buon fine — lo vedi in `install.log`.
-
----
-
-## In caso di problemi (entrambi i sistemi)
-
-1. Apri (o allega) il file **`install.log`** creato accanto all'installer:
-   contiene la cronologia completa, i messaggi di errore dettagliati e anche
-   il traceback degli errori imprevisti. **È il file da inviare per chiedere
-   supporto** — da solo basta a capire cos'è andato storto.
-2. Riprova con l'opzione `--repair` se il problema riguarda solo il codec.
-3. Se serve ripartire da zero, usa `--uninstall` e poi reinstalla.
+- **"winget non disponibile"**: aggiorna *Programma di installazione app* dal
+  Microsoft Store, oppure installa Python, Git e MSYS2 a mano e rilancia
+  `install_windows.py`.
+- **MSYS2 installato ma non trovato**: riavvia e rilancia l'installer.
+- **Il codec non compila**: esegui `python install_windows.py --repair`; se
+  persiste, controlla `install.log`.
+- **All'avvio: `undefined symbol: rtlsdr_set_dithering`**: stessa soluzione di
+  Linux — l'installer applica la patch a `pyrtlsdr`. Rilancia l'installer (o
+  `--repair`).
 
 ---
 
-Ricorda: usa TetraEar **solo** nel rispetto delle leggi vigenti e per
-scopi consentiti. Vedi il [Disclaimer legale](DISCLAIMER.md).
+### In caso di problemi (entrambi i sistemi)
+
+1. Apri (o allega) **`install.log`**, creato accanto all'installer: contiene
+   la cronologia completa e i dettagli degli errori, compresi i traceback
+   degli errori imprevisti. **È il file da inviare per chiedere supporto.**
+2. Usa `--repair` se il problema riguarda solo il codec o la compatibilità
+   RTL-SDR.
+3. Per ripartire da zero, usa `--uninstall` e poi reinstalla.
+
+---
+
+<p align="center">
+  <sub>Usa TetraEar solo nel rispetto delle leggi vigenti · Use TetraEar only in compliance with applicable laws — <a href="DISCLAIMER.md">DISCLAIMER</a></sub>
+</p>
