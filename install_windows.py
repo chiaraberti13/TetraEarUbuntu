@@ -1,35 +1,38 @@
 #!/usr/bin/env python3
 """
-install_linux.py -- Installer automatico per TetraEar su Linux
-================================================================
+install_windows.py -- Installer automatico per TetraEar su Windows
+==================================================================
 
-Testato per: Ubuntu 24.04 e Debian 12 (dovrebbe funzionare anche su
-derivate recenti, es. Linux Mint, Pop!_OS).
+Testato per: Windows 10 / 11 (64 bit).
 
-Uso:
-    python3 install_linux.py              # installazione completa
-    python3 install_linux.py --repair     # ricompila solo il codec vocale
-    python3 install_linux.py --uninstall  # rimuove venv + codec compilato
+Di norma NON si lancia questo file a mano: si fa doppio clic su
+`install_windows.bat`, che si occupa di installare Python se manca e poi
+avvia questo script. Se pero' Python e' gia' presente puoi anche eseguire:
+
+    python install_windows.py              # installazione completa
+    python install_windows.py --repair     # ricompila solo il codec vocale
+    python install_windows.py --uninstall  # rimuove venv + codec compilato
 
 Cosa fa, in ordine:
-    1. Controlla versione di Python e sistema operativo
-    2. Installa le dipendenze di sistema via apt (compilatore, librerie
-       RTL-SDR, librerie Qt necessarie a PyQt6, ecc.)
+    1. Controlla versione di Python e che il sistema sia Windows
+    2. Installa le dipendenze di sistema tramite winget (Git e MSYS2, che
+       fornisce il compilatore C necessario al codec vocale)
     3. Scarica (git clone) il codice sorgente di TetraEar se non e' gia'
        presente accanto a questo script
     4. Crea un virtual environment (.venv) e installa requirements.txt
-    5. Scarica e compila il codec vocale ETSI TETRA (cdecoder/sdecoder)
+    5. Scarica e compila il codec vocale ETSI TETRA (cdecoder.exe / sdecoder.exe)
+       usando il compilatore fornito da MSYS2
     6. Verifica che tutto sia a posto e stampa un riepilogo finale
 
-Non serve clonare niente a mano: basta scaricare questo file, renderlo
-eseguibile (o lanciarlo con python3) e lui fa tutto il resto.
+Nota sull'hardware RTL-SDR: su Windows la chiavetta richiede il driver
+WinUSB installato con Zadig e la libreria rtlsdr.dll nel PATH. Questi due
+passaggi sono, per loro natura, semi-manuali e sono spiegati nella guida
+(GUIDA_INSTALLAZIONE.md). L'installer avvisa ma non blocca.
 
-Ogni passaggio scrive sia a schermo che nel file install.log, cosi' chi
-deve fare supporto puo' vedere l'intera cronologia di cosa e' successo.
+Ogni passaggio scrive sia a schermo che nel file install.log.
 """
 
 import argparse
-import ctypes.util
 import hashlib
 import logging
 import os
@@ -50,77 +53,60 @@ from pathlib import Path
 
 SCRIPT_VERSION = "1.1"
 MIN_PYTHON = (3, 8)
-SUPPORTED_OS_IDS = {"ubuntu", "debian"}
 
-# Repository ufficiale con il codice sorgente di TetraEar. Se questo
-# script non viene lanciato da dentro una copia gia' clonata, provvede
-# a scaricarlo da qui automaticamente.
 TETRAEAR_REPO_URL = "https://github.com/syrex1013/TetraEar.git"
 
-# Cartella dove si trova QUESTO script.
 INSTALLER_DIR = Path(__file__).resolve().parent
 LOG_FILE = INSTALLER_DIR / "install.log"
 
-# I percorsi che dipendono dalla posizione del sorgente di TetraEar
-# vengono impostati a runtime da configure_paths(), dopo aver localizzato
-# (o clonato) il repository. Qui li inizializziamo con dei valori di
-# default ragionevoli.
+# Percorsi derivati, impostati a runtime da configure_paths().
 TETRAEAR_ROOT = INSTALLER_DIR
 VENV_DIR = TETRAEAR_ROOT / ".venv"
 REQUIREMENTS_FILE = TETRAEAR_ROOT / "requirements.txt"
 CODEC_BASE_DIR = TETRAEAR_ROOT / "tetraear" / "tetra_codec"
 CODEC_BIN_DIR = CODEC_BASE_DIR / "bin"
 
-# Il pacchetto del codec vocale TETRA (ACELP) pubblicato da ETSI.
-# Se in futuro questo URL smette di funzionare, aggiornare qui.
 ETSI_CODEC_URL = (
     "http://www.etsi.org/deliver/etsi_en/300300_300399/30039502/"
     "01.03.01_60/en_30039502v010301p0.zip"
 )
 ETSI_CODEC_MD5 = "a8115fe68ef8f8cc466f4192572a1e3e"
 
-# ETSI blocca le richieste che non sembrano provenire da un browser
-# (risposta 403 "bot detection"). Un User-Agent realistico risolve il problema.
 DOWNLOAD_USER_AGENT = (
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 
-# Le patch ufficiali (dal progetto Osmocom osmo-tetra) che rendono il
-# codice ETSI compilabile con un compilatore moderno. Proviamo prima il
-# mirror gitea ufficiale, poi il mirror GitHub come riserva.
 OSMO_TETRA_REPO_URLS = [
     "https://gitea.osmocom.org/tetra/osmo-tetra.git",
     "https://github.com/osmocom/osmo-tetra.git",
 ]
 
-# Pacchetti di sistema richiesti (validi sia per Ubuntu 24.04 che Debian 12)
-APT_PACKAGES = [
-    # Toolchain per compilare il codec vocale (e' codice C, non Python)
-    "build-essential", "gcc", "make", "patch", "git", "wget", "unzip", "ca-certificates",
-    # Ambiente Python: venv + header per eventuali estensioni C dei pacchetti pip
-    "python3-venv", "python3-dev", "python3-pip",
-    # RTL-SDR: libreria nativa usata da pyrtlsdr + tool a riga di comando
-    # + regole udev che permettono di usare la chiavetta senza sudo
-    "librtlsdr0", "librtlsdr-dev", "rtl-sdr",
-    "libusb-1.0-0", "libusb-1.0-0-dev",
-    # PyQt6: librerie di sistema richieste dal plugin grafico "xcb" su
-    # installazioni Ubuntu/Debian minime (senza queste la GUI non parte
-    # e da' errore "could not load the Qt platform plugin xcb")
-    "libxcb-cursor0", "libxkbcommon-x11-0", "libgl1", "libegl1", "libdbus-1-3",
-    # sounddevice: libreria audio nativa (PortAudio)
-    "libportaudio2",
+# Pacchetti winget (id ufficiali) da installare se assenti.
+WINGET_PACKAGES = {
+    "git": "Git.Git",
+    "MSYS2": "MSYS2.MSYS2",
+}
+
+# Percorsi tipici in cui MSYS2 viene installato da winget.
+MSYS2_CANDIDATE_ROOTS = [
+    Path(r"C:\msys64"),
+    Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "MSYS2",
 ]
 
-REQUIRED_TOOLS = ("gcc", "make", "patch", "git")
+# Toolchain MinGW da installare dentro MSYS2 (fornisce gcc/make).
+MSYS2_TOOLCHAIN_PACKAGES = [
+    "base-devel",
+    "mingw-w64-ucrt-x86_64-gcc",
+    "make",
+    "patch",
+]
 
 # ============================================================
 # LOGGING
 # ============================================================
-# Tutto quello che stampiamo va sia a schermo sia su install.log,
-# cosi' in caso di problemi basta allegare quel file per il supporto.
 
-logger = logging.getLogger("tetraear_installer")
+logger = logging.getLogger("tetraear_installer_win")
 logger.setLevel(logging.DEBUG)
 
 _console_handler = logging.StreamHandler(sys.stdout)
@@ -138,8 +124,7 @@ logger.addHandler(_file_handler)
 
 
 class InstallError(Exception):
-    """Errore "gestito": lo stampiamo in modo chiaro e usciamo, senza
-    mostrare un traceback illeggibile all'utente."""
+    """Errore gestito: stampato in modo chiaro, niente traceback grezzo."""
 
 
 def fail(message: str) -> "typing.NoReturn":
@@ -160,19 +145,9 @@ def run(
     cwd: Path | None = None,
     env: dict | None = None,
     check: bool = True,
-    sudo: bool = False,
 ) -> subprocess.CompletedProcess:
-    """
-    Esegue un comando esterno mostrando SEMPRE, in caso di errore, il
-    codice di uscita e l'intero stderr (mai un traceback nudo di Python).
-
-    Nota di sicurezza: passiamo sempre una lista di argomenti e non usiamo
-    mai shell=True, cosi' non c'e' rischio di "shell injection" anche se
-    in futuro qualche pezzo di comando dovesse dipendere da input esterno.
-    """
-    if sudo and os.geteuid() != 0:
-        cmd = ["sudo"] + cmd
-
+    """Esegue un comando esterno mostrando SEMPRE, in caso di errore, il
+    codice di uscita e l'intero stderr. Nessun shell=True."""
     logger.debug("Eseguo comando: %s (cwd=%s)", " ".join(cmd), cwd or INSTALLER_DIR)
     try:
         result = subprocess.run(
@@ -201,11 +176,6 @@ def run(
 
 
 def find_path_ci(base: Path, name: str) -> Path | None:
-    """
-    Cerca un file o una cartella chiamata `name` dentro `base`, ignorando
-    maiuscole/minuscole (utile perche' gli archivi ETSI a volte usano nomi
-    tipo "C-CODE" invece di "c-code" a seconda della versione dello zip).
-    """
     target = name.lower()
     for dirpath, dirnames, filenames in os.walk(base):
         for entry in dirnames + filenames:
@@ -219,14 +189,10 @@ def find_path_ci(base: Path, name: str) -> Path | None:
 # ============================================================
 
 def _looks_like_tetraear_root(path: Path) -> bool:
-    """Una cartella e' una copia valida di TetraEar se contiene sia
-    requirements.txt sia il package Python tetraear/."""
     return (path / "requirements.txt").is_file() and (path / "tetraear").is_dir()
 
 
 def configure_paths(root: Path) -> None:
-    """Imposta tutti i percorsi derivati una volta noto dove si trova
-    davvero il codice sorgente di TetraEar."""
     global TETRAEAR_ROOT, VENV_DIR, REQUIREMENTS_FILE, CODEC_BASE_DIR, CODEC_BIN_DIR
     TETRAEAR_ROOT = root
     VENV_DIR = root / ".venv"
@@ -236,14 +202,6 @@ def configure_paths(root: Path) -> None:
 
 
 def ensure_tetraear_source(clone_if_missing: bool = True) -> Path:
-    """
-    Trova il codice sorgente di TetraEar. In ordine:
-      1. Lo script e' gia' dentro una copia di TetraEar? -> usa quella cartella.
-      2. Esiste una sottocartella ./TetraEar accanto allo script? -> usa quella.
-      3. Altrimenti (se consentito) clona il repository ufficiale.
-
-    Ritorna il percorso della root di TetraEar e configura i percorsi derivati.
-    """
     if _looks_like_tetraear_root(INSTALLER_DIR):
         logger.info("[OK] Sorgente di TetraEar trovato nella cartella corrente")
         configure_paths(INSTALLER_DIR)
@@ -256,28 +214,25 @@ def ensure_tetraear_source(clone_if_missing: bool = True) -> Path:
         return cloned_dir
 
     if not clone_if_missing:
-        # Usato dalla disinstallazione: non vogliamo scaricare niente,
-        # restituiamo comunque il percorso "atteso" per la pulizia.
         configure_paths(cloned_dir)
         return cloned_dir
 
     step("Scarico il codice sorgente di TetraEar")
-    if shutil.which("git") is None:
+    git_exe = which_git()
+    if git_exe is None:
         fail("git non e' installato: impossibile scaricare il sorgente di TetraEar.")
 
     if cloned_dir.exists():
-        # Cartella esistente ma incompleta (clone precedente interrotto):
-        # la rimuoviamo per ripartire pulito.
         logger.info("Rimuovo una copia incompleta preesistente: %s", cloned_dir)
         shutil.rmtree(cloned_dir, ignore_errors=True)
 
     logger.info("Clono %s in %s ...", TETRAEAR_REPO_URL, cloned_dir)
-    run(["git", "clone", "--depth", "1", TETRAEAR_REPO_URL, str(cloned_dir)])
+    run([git_exe, "clone", "--depth", "1", TETRAEAR_REPO_URL, str(cloned_dir)])
 
     if not _looks_like_tetraear_root(cloned_dir):
         fail(
             "Il repository e' stato scaricato ma non contiene i file attesi "
-            "(requirements.txt e cartella tetraear/). Struttura del repo cambiata?"
+            "(requirements.txt e cartella tetraear/)."
         )
 
     logger.info("[OK] Sorgente di TetraEar scaricato in %s", cloned_dir)
@@ -300,64 +255,97 @@ def check_python_version() -> None:
     logger.info("[OK] Python %s.%s rilevato", *current)
 
 
-def read_os_release() -> dict:
-    os_release_path = Path("/etc/os-release")
-    if not os_release_path.is_file():
-        return {}
-    data = {}
-    for line in os_release_path.read_text(encoding="utf-8").splitlines():
-        if "=" in line:
-            key, _, value = line.partition("=")
-            data[key.strip()] = value.strip().strip('"')
-    return data
-
-
 def check_operating_system() -> None:
     step("Controllo sistema operativo")
-    if platform.system() != "Linux":
-        fail("Questo script serve solo per Linux. Su Windows usa install_windows.py (o install_windows.bat).")
-
-    info = read_os_release()
-    os_id = info.get("ID", "").lower()
-    os_name = info.get("PRETTY_NAME", "distribuzione Linux sconosciuta")
-
-    if os_id not in SUPPORTED_OS_IDS:
-        logger.warning(
-            "[ATTENZIONE] Distribuzione non ufficialmente testata: %s. "
-            "Si prosegue comunque, ma in caso di problemi la causa potrebbe "
-            "essere questa (pacchetti apt con nomi diversi).",
-            os_name,
-        )
-    else:
-        logger.info("[OK] Sistema operativo supportato: %s", os_name)
+    if platform.system() != "Windows":
+        fail("Questo script serve solo per Windows. Su Ubuntu/Debian usa install_linux.py.")
+    logger.info("[OK] Sistema operativo: %s %s", platform.system(), platform.release())
 
 
 # ============================================================
-# FASE 2 -- Dipendenze di sistema (apt)
+# FASE 2 -- Dipendenze di sistema (winget + MSYS2)
 # ============================================================
+
+def which_git() -> str | None:
+    """git potrebbe non essere ancora nel PATH della sessione corrente
+    subito dopo l'installazione con winget: controlliamo anche i percorsi
+    tipici."""
+    found = shutil.which("git")
+    if found:
+        return found
+    for candidate in (
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Git" / "cmd" / "git.exe",
+        Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Git" / "cmd" / "git.exe",
+    ):
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _winget_available() -> bool:
+    return shutil.which("winget") is not None
+
+
+def _winget_package_installed(package_id: str) -> bool:
+    result = run(["winget", "list", "--id", package_id, "-e"], check=False)
+    return result.returncode == 0 and package_id.lower() in result.stdout.lower()
+
 
 def install_system_dependencies() -> None:
-    step("Installazione dipendenze di sistema (apt)")
+    step("Installazione dipendenze di sistema (winget + MSYS2)")
 
-    if shutil.which("apt-get") is None:
+    if not _winget_available():
         fail(
-            "apt-get non trovato: questo script funziona solo su distribuzioni "
-            "basate su Debian/Ubuntu."
+            "winget non trovato. winget e' incluso in Windows 10/11 aggiornati "
+            "(App Installer dal Microsoft Store). Installalo e riprova, oppure "
+            "installa manualmente Git e MSYS2 come spiegato nella guida."
         )
 
-    logger.info("Aggiorno l'elenco pacchetti (apt-get update)...")
-    run(["apt-get", "update"], sudo=True)
-
-    logger.info("Installo %d pacchetti: %s", len(APT_PACKAGES), ", ".join(APT_PACKAGES))
-    run(["apt-get", "install", "-y"] + APT_PACKAGES, sudo=True)
-
-    missing_tools = [tool for tool in REQUIRED_TOOLS if shutil.which(tool) is None]
-    if missing_tools:
-        fail(
-            "Anche dopo l'installazione mancano questi strumenti nel PATH: "
-            + ", ".join(missing_tools)
+    for human_name, package_id in WINGET_PACKAGES.items():
+        if _winget_package_installed(package_id):
+            logger.info("[OK] %s gia' installato", human_name)
+            continue
+        logger.info("Installo %s (%s) tramite winget...", human_name, package_id)
+        run(
+            [
+                "winget", "install", "--id", package_id, "-e",
+                "--accept-source-agreements", "--accept-package-agreements",
+                "--silent",
+            ]
         )
-    logger.info("[OK] Dipendenze di sistema installate correttamente")
+        logger.info("[OK] %s installato", human_name)
+
+    ensure_msys2_toolchain()
+
+
+def find_msys2_root() -> Path | None:
+    for root in MSYS2_CANDIDATE_ROOTS:
+        if (root / "usr" / "bin" / "bash.exe").is_file():
+            return root
+    return None
+
+
+def ensure_msys2_toolchain() -> Path:
+    """Assicura che dentro MSYS2 sia presente il compilatore C (gcc/make).
+    Ritorna il percorso di bash.exe di MSYS2."""
+    msys2_root = find_msys2_root()
+    if msys2_root is None:
+        fail(
+            "MSYS2 risulta installato ma non trovo la sua cartella "
+            "(cercato in: " + ", ".join(str(p) for p in MSYS2_CANDIDATE_ROOTS) + "). "
+            "Riavvia il PC e rilancia l'installer, oppure indica il percorso a mano."
+        )
+
+    bash_exe = msys2_root / "usr" / "bin" / "bash.exe"
+    logger.info("Aggiorno i pacchetti base di MSYS2 (puo' richiedere qualche minuto)...")
+    run([str(bash_exe), "-lc", "pacman -Syu --noconfirm --needed"], check=False)
+
+    pkgs = " ".join(MSYS2_TOOLCHAIN_PACKAGES)
+    logger.info("Installo la toolchain di compilazione dentro MSYS2: %s", pkgs)
+    run([str(bash_exe), "-lc", f"pacman -S --noconfirm --needed {pkgs}"])
+
+    logger.info("[OK] Toolchain MSYS2 pronta")
+    return bash_exe
 
 
 # ============================================================
@@ -376,30 +364,24 @@ def create_virtualenv_and_install_requirements() -> None:
     else:
         logger.info("Virtual environment gia' presente in %s, lo riuso", VENV_DIR)
 
-    pip_path = VENV_DIR / "bin" / "pip"
-    if not pip_path.is_file():
-        fail(f"pip non trovato dentro il virtual environment: {pip_path}")
+    python_path = VENV_DIR / "Scripts" / "python.exe"
+    if not python_path.is_file():
+        fail(f"python non trovato dentro il virtual environment: {python_path}")
 
     logger.info("Aggiorno pip...")
-    run([str(pip_path), "install", "--upgrade", "pip"])
+    run([str(python_path), "-m", "pip", "install", "--upgrade", "pip"])
 
     logger.info("Installo i pacchetti elencati in requirements.txt (puo' richiedere qualche minuto)...")
-    run([str(pip_path), "install", "-r", str(REQUIREMENTS_FILE)])
+    run([str(python_path), "-m", "pip", "install", "-r", str(REQUIREMENTS_FILE)])
 
     logger.info("[OK] Ambiente Python pronto in %s", VENV_DIR)
 
 
 # ============================================================
-# FASE 4 -- Compilazione del codec vocale ETSI TETRA
+# FASE 4 -- Compilazione del codec vocale ETSI TETRA (via MSYS2)
 # ============================================================
 
 def _download_with_browser_headers(url: str, destination: Path) -> None:
-    """
-    Scarica un file impostando un User-Agent "da browser". Il sito ETSI
-    risponde 403 (bot detection) alle richieste che sembrano provenire
-    da script automatici, quindi urllib.request.urlretrieve() da solo
-    non basta: serve costruire manualmente la richiesta con gli header.
-    """
     request = urllib.request.Request(url, headers={"User-Agent": DOWNLOAD_USER_AGENT})
     try:
         with urllib.request.urlopen(request, timeout=60) as response, open(destination, "wb") as out_file:
@@ -408,8 +390,7 @@ def _download_with_browser_headers(url: str, destination: Path) -> None:
         fail(
             f"Download fallito ({exc.code} {exc.reason}) da {url}. "
             "Se il problema persiste, l'URL potrebbe essere cambiato: "
-            "verificare manualmente sul sito ETSI e aggiornare ETSI_CODEC_URL "
-            "in cima a questo script."
+            "verificare manualmente sul sito ETSI e aggiornare ETSI_CODEC_URL."
         )
     except urllib.error.URLError as exc:
         fail(f"Download fallito: impossibile raggiungere {url} ({exc.reason}).")
@@ -425,64 +406,45 @@ def _verify_checksum(file_path: Path, expected_md5: str) -> None:
         file_path.unlink(missing_ok=True)
         fail(
             f"Checksum MD5 non corrispondente per {file_path.name}: "
-            f"atteso {expected_md5}, ottenuto {actual}. Il file scaricato "
-            "potrebbe essere corrotto o l'archivio ETSI e' cambiato di versione."
+            f"atteso {expected_md5}, ottenuto {actual}."
         )
 
 
 def _fix_makefile_for_modern_gcc(makefile_path: Path) -> None:
-    """
-    Il Makefile originale ETSI del 2005 usa un compilatore chiamato "acc"
-    (Sun/HP-UX, non esiste su Linux moderno) e non compila con GCC 10+
-    senza qualche aggiustamento. Questa funzione applica le stesse
-    correzioni gia' note e testate da anni nella comunita' (vedi il
-    progetto "install-tetra-codec" di sq5bpf):
-      - ACC = acc  ->  ACC = gcc
-      - aggiunge -fcommon (richiesto da GCC 10 in poi)
-      - rimuove -Werror (altrimenti anche semplici warning bloccano la build)
-    """
     data = makefile_path.read_text(encoding="utf-8", errors="ignore")
-
     data = re.sub(r"(?m)^ACC\s*=\s*acc\b", "ACC = gcc", data)
     data = re.sub(r"(?m)^(\s*)acc\b", r"\1gcc", data)
     data = re.sub(r"\bacc\b", "gcc", data)
-
     if "-fcommon" not in data:
         data = re.sub(r"(?m)^CFLAGS\s*=\s*(.*)$", r"CFLAGS = -fcommon \1", data)
-
     data = data.replace("-Werror", "")
-
     makefile_path.write_text(data, encoding="utf-8")
 
 
-def _normalize_line_endings(root: Path) -> None:
-    """L'archivio ETSI ha alcuni file con fine riga Windows (CRLF); li
-    normalizziamo a LF per evitare problemi con patch/make su Linux."""
-    for path in root.rglob("*"):
-        if path.is_file() and path.suffix.lower() in (".c", ".h") or path.name.lower() == "makefile":
-            try:
-                raw = path.read_bytes()
-                if b"\r\n" in raw:
-                    path.write_bytes(raw.replace(b"\r\n", b"\n"))
-            except OSError:
-                pass
+def _msys2_bash() -> Path:
+    root = find_msys2_root()
+    if root is None:
+        fail("MSYS2 non trovato: impossibile compilare il codec. Reinstalla MSYS2.")
+    return root / "usr" / "bin" / "bash.exe"
 
 
-def _apply_osmo_tetra_patches(codec_dir: Path, work_dir: Path) -> bool:
-    """
-    Metodo primario: clona il repository osmo-tetra (che contiene le
-    patch ufficiali per rendere il codec ETSI decodificabile a partire
-    dai bit ricevuti via radio) e le applica in ordine.
+def _to_msys_path(bash_exe: Path, win_path: Path) -> str:
+    """Converte un percorso Windows (C:\\x) nel formato MSYS (/c/x) usando
+    cygpath, cosi' make/gcc lo capiscono."""
+    result = run([str(bash_exe), "-lc", f'cygpath -u "{win_path}"'])
+    return result.stdout.strip()
 
-    Ritorna True se le patch sono state applicate, False se il metodo
-    non e' disponibile (es. nessuna connessione ai mirror) e bisogna
-    ricorrere al metodo di riserva.
-    """
+
+def _apply_osmo_tetra_patches(bash_exe: Path, codec_dir: Path, work_dir: Path) -> bool:
+    git_exe = which_git()
+    if git_exe is None:
+        return False
+
     osmo_dir = work_dir / "osmo-tetra"
     cloned = False
     for repo_url in OSMO_TETRA_REPO_URLS:
         logger.info("Provo a scaricare le patch da %s ...", repo_url)
-        result = run(["git", "clone", "--depth", "1", repo_url, str(osmo_dir)], check=False)
+        result = run([git_exe, "clone", "--depth", "1", repo_url, str(osmo_dir)], check=False)
         if result.returncode == 0:
             cloned = True
             break
@@ -490,7 +452,7 @@ def _apply_osmo_tetra_patches(codec_dir: Path, work_dir: Path) -> bool:
 
     if not cloned:
         logger.warning(
-            "[ATTENZIONE] Impossibile scaricare le patch ufficiali da nessun mirror. "
+            "[ATTENZIONE] Impossibile scaricare le patch ufficiali. "
             "Procedo con il metodo di riserva (compilazione diretta, senza patch)."
         )
         return False
@@ -501,6 +463,7 @@ def _apply_osmo_tetra_patches(codec_dir: Path, work_dir: Path) -> bool:
         logger.warning("File 'series' delle patch non trovato, uso il metodo di riserva.")
         return False
 
+    codec_msys = _to_msys_path(bash_exe, codec_dir)
     for patch_name in series_file.read_text(encoding="utf-8").splitlines():
         patch_name = patch_name.strip()
         if not patch_name or patch_name.startswith("#"):
@@ -510,15 +473,12 @@ def _apply_osmo_tetra_patches(codec_dir: Path, work_dir: Path) -> bool:
             logger.warning("Patch elencata ma non trovata: %s (la salto)", patch_name)
             continue
         logger.info("Applico patch: %s", patch_name)
-        with open(patch_file, "rb") as f:
-            result = subprocess.run(
-                ["patch", "--batch", "-p1", "-N", "-E"],
-                cwd=str(codec_dir),
-                stdin=f,
-                capture_output=True,
-                text=True,
-            )
-        if result.returncode not in (0, 1):  # 1 = "gia' applicata", non fatale
+        patch_msys = _to_msys_path(bash_exe, patch_file)
+        result = run(
+            [str(bash_exe), "-lc", f'cd "{codec_msys}" && patch --batch -p1 -N -E < "{patch_msys}"'],
+            check=False,
+        )
+        if result.returncode not in (0, 1):  # 1 = gia' applicata
             logger.error("Applicazione patch fallita: %s\n%s", patch_name, result.stderr)
             fail(f"Patch fallita: {patch_name}")
 
@@ -526,8 +486,9 @@ def _apply_osmo_tetra_patches(codec_dir: Path, work_dir: Path) -> bool:
 
 
 def install_tetra_codec(fallback_only: bool = False) -> None:
-    step("Compilazione del codec vocale ETSI TETRA (cdecoder / sdecoder)")
+    step("Compilazione del codec vocale ETSI TETRA (cdecoder.exe / sdecoder.exe)")
 
+    bash_exe = _msys2_bash()
     work_dir = Path(tempfile.mkdtemp(prefix="tetra-codec-"))
     logger.debug("Cartella temporanea di lavoro: %s", work_dir)
 
@@ -548,10 +509,8 @@ def install_tetra_codec(fallback_only: bool = False) -> None:
         if c_code_dir is None:
             fail("Cartella 'c-code' non trovata nell'archivio ETSI estratto (formato inatteso).")
 
-        _normalize_line_endings(work_dir)
-
         if not fallback_only:
-            _apply_osmo_tetra_patches(c_code_dir.parent, work_dir)
+            _apply_osmo_tetra_patches(bash_exe, c_code_dir.parent, work_dir)
         else:
             logger.info("Modalita' di riserva: salto l'applicazione delle patch ufficiali.")
 
@@ -562,20 +521,28 @@ def install_tetra_codec(fallback_only: bool = False) -> None:
         logger.info("Sistemo il Makefile per un compilatore GCC moderno...")
         _fix_makefile_for_modern_gcc(makefile_path)
 
-        logger.info("Compilo (make)...")
-        run(["make", "-f", makefile_path.name], cwd=c_code_dir)
+        logger.info("Compilo con il compilatore MSYS2 (make)...")
+        c_code_msys = _to_msys_path(bash_exe, c_code_dir)
+        # Aggiungiamo la toolchain UCRT al PATH dentro la shell MSYS2 e
+        # compiliamo forzando CC=gcc.
+        build_cmd = (
+            'export PATH="/ucrt64/bin:$PATH" && '
+            f'cd "{c_code_msys}" && '
+            f'make -f "{makefile_path.name}" CC=gcc'
+        )
+        run([str(bash_exe), "-lc", build_cmd])
 
         CODEC_BIN_DIR.mkdir(parents=True, exist_ok=True)
-        wanted_binaries = ["cdecoder", "sdecoder", "ccoder", "scoder"]
+        # Su Windows i binari possono chiamarsi con o senza estensione .exe.
+        wanted = ["cdecoder", "sdecoder", "ccoder", "scoder"]
         missing = []
-        for binary_name in wanted_binaries:
-            src = find_path_ci(c_code_dir, binary_name)
+        for base_name in wanted:
+            src = find_path_ci(c_code_dir, base_name + ".exe") or find_path_ci(c_code_dir, base_name)
             if src is None:
-                missing.append(binary_name)
+                missing.append(base_name)
                 continue
-            dst = CODEC_BIN_DIR / binary_name
+            dst = CODEC_BIN_DIR / (base_name + ".exe")
             shutil.copy2(src, dst)
-            dst.chmod(dst.stat().st_mode | 0o111)  # +x
             logger.info("  + %s", dst)
 
         if missing:
@@ -593,13 +560,6 @@ def install_tetra_codec(fallback_only: bool = False) -> None:
 
 
 def install_tetra_codec_with_fallback() -> None:
-    """
-    Prova prima il metodo con le patch ufficiali (piu' corretto). Se
-    fallisce per un motivo di rete/ambiente, ritenta automaticamente con
-    il metodo di riserva (compilazione diretta senza patch, come faceva
-    gia' lo script Windows del progetto). Se anche questo fallisce,
-    l'errore viene mostrato con dettagli completi.
-    """
     try:
         install_tetra_codec(fallback_only=False)
     except InstallError:
@@ -617,22 +577,22 @@ def verify_installation() -> None:
 
     all_ok = True
 
-    pip_path = VENV_DIR / "bin" / "pip"
-    if pip_path.is_file():
+    python_path = VENV_DIR / "Scripts" / "python.exe"
+    if python_path.is_file():
         logger.info("[OK] Virtual environment presente: %s", VENV_DIR)
     else:
         logger.error("[FALLITO] Virtual environment non trovato")
         all_ok = False
 
-    for binary_name in ("cdecoder", "sdecoder"):
-        binary_path = CODEC_BIN_DIR / binary_name
-        if binary_path.is_file() and os.access(binary_path, os.X_OK):
-            logger.info("[OK] Binario codec presente ed eseguibile: %s", binary_path)
+    for base_name in ("cdecoder", "sdecoder"):
+        binary_path = CODEC_BIN_DIR / (base_name + ".exe")
+        if binary_path.is_file():
+            logger.info("[OK] Binario codec presente: %s", binary_path)
         else:
-            logger.error("[FALLITO] Binario codec mancante o non eseguibile: %s", binary_path)
+            logger.error("[FALLITO] Binario codec mancante: %s", binary_path)
             all_ok = False
 
-    check_rtl_sdr_dongle()  # solo informativo, non blocca l'installazione
+    warn_about_rtl_sdr_on_windows()  # solo informativo
 
     if not all_ok:
         fail("Uno o piu' controlli finali non sono andati a buon fine (vedi sopra).")
@@ -641,39 +601,24 @@ def verify_installation() -> None:
     logger.info("========================================================")
     logger.info(" Installazione completata con successo!")
     logger.info("")
-    logger.info(" Per avviare TetraEar:")
+    logger.info(" Per avviare TetraEar (Prompt dei comandi):")
     logger.info("   cd %s", TETRAEAR_ROOT)
-    logger.info("   source .venv/bin/activate")
+    logger.info(r"   .venv\Scripts\activate")
     logger.info("   python -m tetraear -f 392.225")
     logger.info("========================================================")
 
 
-def check_rtl_sdr_dongle() -> None:
-    """
-    Controllo "morbido": verifica solo se sembra esserci una chiavetta
-    RTL-SDR collegata, senza bloccare l'installazione se non c'e' (magari
-    l'utente la collega dopo, o sta solo installando in anticipo).
-    """
-    if ctypes.util.find_library("rtlsdr") is None:
-        logger.warning(
-            "[INFO] Libreria librtlsdr non trovata nel sistema: "
-            "verrà rilevata solo quando colleghi una chiavetta e la usi."
-        )
-
-    if shutil.which("lsusb") is None:
-        logger.info("[INFO] 'lsusb' non disponibile, salto il controllo della chiavetta RTL-SDR.")
-        return
-
-    result = run(["lsusb"], check=False)
-    # 0bda:2838 e 0bda:2832 sono i vendor/product ID piu' comuni per le
-    # chiavette RTL2832U usate come RTL-SDR
-    if re.search(r"0bda:283[28]", result.stdout):
-        logger.info("[OK] Chiavetta RTL-SDR rilevata via USB")
-    else:
-        logger.warning(
-            "[INFO] Nessuna chiavetta RTL-SDR rilevata al momento. "
-            "Non e' un problema per l'installazione: collegala prima di avviare TetraEar."
-        )
+def warn_about_rtl_sdr_on_windows() -> None:
+    """Su Windows il supporto RTL-SDR richiede driver WinUSB (Zadig) e
+    rtlsdr.dll: passaggi semi-manuali. Ricordiamo all'utente di leggerli
+    nella guida, senza bloccare l'installazione."""
+    logger.info("")
+    logger.warning(
+        "[IMPORTANTE] Prima di usare la chiavetta RTL-SDR su Windows devi:\n"
+        "  1) installare il driver WinUSB con Zadig (https://zadig.akeo.ie/);\n"
+        "  2) avere rtlsdr.dll raggiungibile nel PATH.\n"
+        "  Vedi la sezione 'RTL-SDR su Windows' in GUIDA_INSTALLAZIONE.md."
+    )
 
 
 # ============================================================
@@ -683,6 +628,7 @@ def check_rtl_sdr_dongle() -> None:
 def do_repair() -> None:
     step("Modalita' --repair: ricompilo solo il codec vocale")
     ensure_tetraear_source(clone_if_missing=True)
+    ensure_msys2_toolchain()
     install_tetra_codec_with_fallback()
     verify_installation()
 
@@ -703,7 +649,7 @@ def do_uninstall() -> None:
     else:
         logger.info("Nessun binario del codec da rimuovere")
 
-    logger.info("[OK] Disinstallazione completata (il codice sorgente non è stato toccato)")
+    logger.info("[OK] Disinstallazione completata (il codice sorgente non e' stato toccato)")
 
 
 # ============================================================
@@ -712,12 +658,12 @@ def do_uninstall() -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Installer TetraEar per Linux (Ubuntu 24.04 / Debian 12)"
+        description="Installer TetraEar per Windows 10/11"
     )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "--repair", action="store_true",
-        help="Ricompila solo il codec vocale (utile se e' l'unica cosa rotta)",
+        help="Ricompila solo il codec vocale",
     )
     group.add_argument(
         "--uninstall", action="store_true",
@@ -729,7 +675,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
 
-    logger.info("====== TetraEar Linux Installer v%s ======", SCRIPT_VERSION)
+    logger.info("====== TetraEar Windows Installer v%s ======", SCRIPT_VERSION)
     logger.info("Log completo salvato in: %s", LOG_FILE)
 
     try:
