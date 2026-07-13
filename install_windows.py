@@ -410,6 +410,24 @@ def _verify_checksum(file_path: Path, expected_md5: str) -> None:
         )
 
 
+def _lowercase_filenames(directory: Path) -> None:
+    """L'archivio ETSI usa nomi MAIUSCOLI (SCODER.C, MAKEFILE) ma il
+    Makefile li richiama in minuscolo. Uniformiamo in minuscolo tutti i
+    file (utile soprattutto quando si compila su filesystem
+    case-sensitive)."""
+    for path in directory.rglob("*"):
+        if not path.is_file():
+            continue
+        lower_name = path.name.lower()
+        if lower_name == path.name:
+            continue
+        target = path.parent / lower_name
+        if target.exists():
+            path.unlink()
+        else:
+            path.rename(target)
+
+
 def _fix_makefile_for_modern_gcc(makefile_path: Path) -> None:
     data = makefile_path.read_text(encoding="utf-8", errors="ignore")
     data = re.sub(r"(?m)^ACC\s*=\s*acc\b", "ACC = gcc", data)
@@ -508,6 +526,11 @@ def install_tetra_codec(fallback_only: bool = False) -> None:
         c_code_dir = find_path_ci(work_dir, "c-code")
         if c_code_dir is None:
             fail("Cartella 'c-code' non trovata nell'archivio ETSI estratto (formato inatteso).")
+
+        # L'archivio ETSI usa nomi MAIUSCOLI ma il Makefile li richiama in
+        # minuscolo: uniformiamo prima di compilare.
+        logger.info("Uniformo i nomi dei file del codec in minuscolo...")
+        _lowercase_filenames(c_code_dir)
 
         if not fallback_only:
             _apply_osmo_tetra_patches(bash_exe, c_code_dir.parent, work_dir)
