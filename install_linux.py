@@ -1,0 +1,672 @@
+#!/usr/bin/env python3
+"""
+install_linux.py -- Installer automatico per TetraEar su Linux
+================================================================
+
+Testato per: Ubuntu 24.04 e Debian 12 (dovrebbe funzionare anche su
+derivate recenti, es. Linux Mint, Pop!_OS).
+
+Uso:
+    python3 install_linux.py              # installazione completa
+    python3 install_linux.py --repair     # ricompila solo il codec vocale
+    python3 install_linux.py --uninstall  # rimuove venv + codec compilato
+
+Cosa fa, in ordine:
+    1. Controlla versione di Python e sistema operativo
+    2. Installa le dipendenze di sistema via apt (compilatore, librerie
+       RTL-SDR, librerie Qt necessarie a PyQt6, ecc.)
+    3. Crea un virtual environment (.venv) e installa requirements.txt
+    4. Scarica e compila il codec vocale ETSI TETRA (cdecoder/sdecoder)
+    5. Verifica che tutto sia a posto e stampa un riepilogo finale
+
+Ogni passaggio scrive sia a schermo che nel file install.log, cosi' chi
+deve fare supporto puo' vedere l'intera cronologia di cosa e' successo.
+"""
+
+import argparse
+import ctypes.util
+import hashlib
+import logging
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.error
+import urllib.request
+import zipfile
+from pathlib import Path
+
+# ============================================================
+# CONFIGURAZIONE
+# ============================================================
+
+SCRIPT_VERSION = "1.0"
+MIN_PYTHON = (3, 8)
+SUPPORTED_OS_IDS = {"ubuntu", "debian"}
+
+# Cartella dove si trova QUESTO script: assumiamo sia la root del repo
+# (cioe' lo stesso livello di requirements.txt e della cartella tetraear/)
+REPO_ROOT = Path(__file__).resolve().parent
+VENV_DIR = REPO_ROOT / ".venv"
+REQUIREMENTS_FILE = REPO_ROOT / "requirements.txt"
+CODEC_BASE_DIR = REPO_ROOT / "tetraear" / "tetra_codec"
+CODEC_BIN_DIR = CODEC_BASE_DIR / "bin"
+LOG_FILE = REPO_ROOT / "install.log"
+
+# Il pacchetto del codec vocale TETRA (ACELP) pubblicato da ETSI.
+# Se in futuro questo URL smette di funzionare, aggiornare qui.
+ETSI_CODEC_URL = (
+    "http://www.etsi.org/deliver/etsi_en/300300_300399/30039502/"
+    "01.03.01_60/en_30039502v010301p0.zip"
+)
+ETSI_CODEC_MD5 = "a8115fe68ef8f8cc466f4192572a1e3e"
+
+# ETSI blocca le richieste che non sembrano provenire da un browser
+# (risposta 403 "bot detection"). Un User-Agent realistico risolve il problema.
+DOWNLOAD_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+)
+
+# Le patch ufficiali (dal progetto Osmocom osmo-tetra) che rendono il
+# codice ETSI compilabile con un compilatore moderno. Proviamo prima il
+# mirror gitea ufficiale, poi il mirror GitHub come riserva.
+OSMO_TETRA_REPO_URLS = [
+    "https://gitea.osmocom.org/tetra/osmo-tetra.git",
+    "https://github.com/osmocom/osmo-tetra.git",
+]
+
+# Pacchetti di sistema richiesti (validi sia per Ubuntu 24.04 che Debian 12)
+APT_PACKAGES = [
+    # Toolchain per compilare il codec vocale (e' codice C, non Python)
+    "build-essential", "gcc", "make", "patch", "git", "wget", "unzip", "ca-certificates",
+    # Ambiente Python: venv + header per eventuali estensioni C dei pacchetti pip
+    "python3-venv", "python3-dev", "python3-pip",
+    # RTL-SDR: libreria nativa usata da pyrtlsdr + tool a riga di comando
+    # + regole udev che permettono di usare la chiavetta senza sudo
+    "librtlsdr0", "librtlsdr-dev", "rtl-sdr",
+    "libusb-1.0-0", "libusb-1.0-0-dev",
+    # PyQt6: librerie di sistema richieste dal plugin grafico "xcb" su
+    # installazioni Ubuntu/Debian minime (senza queste la GUI non parte
+    # e da' errore "could not load the Qt platform plugin xcb")
+    "libxcb-cursor0", "libxkbcommon-x11-0", "libgl1", "libegl1", "libdbus-1-3",
+    # sounddevice: libreria audio nativa (PortAudio)
+    "libportaudio2",
+]
+
+REQUIRED_TOOLS = ("gcc", "make", "patch", "git")
+
+# ============================================================
+# LOGGING
+# ============================================================
+# Tutto quello che stampiamo va sia a schermo sia su install.log,
+# cosi' in caso di problemi basta allegare quel file per il supporto.
+
+logger = logging.getLogger("tetraear_installer")
+logger.setLevel(logging.DEBUG)
+
+_console_handler = logging.StreamHandler(sys.stdout)
+_console_handler.setLevel(logging.INFO)
+_console_handler.setFormatter(logging.Formatter("%(message)s"))
+
+_file_handler = logging.FileHandler(LOG_FILE, mode="a", encoding="utf-8")
+_file_handler.setLevel(logging.DEBUG)
+_file_handler.setFormatter(
+    logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S")
+)
+
+logger.addHandler(_console_handler)
+logger.addHandler(_file_handler)
+
+
+class InstallError(Exception):
+    """Errore "gestito": lo stampiamo in modo chiaro e usciamo, senza
+    mostrare un traceback illeggibile all'utente."""
+
+
+def fail(message: str) -> "typing.NoReturn":
+    logger.error("")
+    logger.error("[ERRORE] %s", message)
+    logger.error("Dettagli completi disponibili in: %s", LOG_FILE)
+    raise InstallError(message)
+
+
+def step(title: str) -> None:
+    logger.info("")
+    logger.info("==> %s", title)
+
+
+def run(
+    cmd: list,
+    *,
+    cwd: Path | None = None,
+    env: dict | None = None,
+    check: bool = True,
+    sudo: bool = False,
+) -> subprocess.CompletedProcess:
+    """
+    Esegue un comando esterno mostrando SEMPRE, in caso di errore, il
+    codice di uscita e l'intero stderr (mai un traceback nudo di Python).
+
+    Nota di sicurezza: passiamo sempre una lista di argomenti e non usiamo
+    mai shell=True, cosi' non c'e' rischio di "shell injection" anche se
+    in futuro qualche pezzo di comando dovesse dipendere da input esterno.
+    """
+    if sudo and os.geteuid() != 0:
+        cmd = ["sudo"] + cmd
+
+    logger.debug("Eseguo comando: %s (cwd=%s)", " ".join(cmd), cwd or REPO_ROOT)
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        fail(f"Comando non trovato: {cmd[0]} ({exc})")
+
+    logger.debug("Codice di uscita: %s", result.returncode)
+    if result.stdout:
+        logger.debug("--- stdout ---\n%s", result.stdout.strip())
+    if result.stderr:
+        logger.debug("--- stderr ---\n%s", result.stderr.strip())
+
+    if check and result.returncode != 0:
+        logger.error("Il comando '%s' e' fallito (codice %s).", " ".join(cmd), result.returncode)
+        if result.stderr.strip():
+            logger.error("--- Messaggio di errore completo ---\n%s", result.stderr.strip())
+        fail(f"Comando fallito: {' '.join(cmd)}")
+
+    return result
+
+
+def find_path_ci(base: Path, name: str) -> Path | None:
+    """
+    Cerca un file o una cartella chiamata `name` dentro `base`, ignorando
+    maiuscole/minuscole (utile perche' gli archivi ETSI a volte usano nomi
+    tipo "C-CODE" invece di "c-code" a seconda della versione dello zip).
+    """
+    target = name.lower()
+    for dirpath, dirnames, filenames in os.walk(base):
+        for entry in dirnames + filenames:
+            if entry.lower() == target:
+                return Path(dirpath) / entry
+    return None
+
+
+# ============================================================
+# FASE 1 -- Controlli preliminari
+# ============================================================
+
+def check_python_version() -> None:
+    step("Controllo versione di Python")
+    current = sys.version_info[:2]
+    if current < MIN_PYTHON:
+        fail(
+            f"E' richiesto Python {MIN_PYTHON[0]}.{MIN_PYTHON[1]} o superiore, "
+            f"trovato {current[0]}.{current[1]}. Aggiorna Python e riprova."
+        )
+    logger.info("[OK] Python %s.%s rilevato", *current)
+
+
+def read_os_release() -> dict:
+    os_release_path = Path("/etc/os-release")
+    if not os_release_path.is_file():
+        return {}
+    data = {}
+    for line in os_release_path.read_text(encoding="utf-8").splitlines():
+        if "=" in line:
+            key, _, value = line.partition("=")
+            data[key.strip()] = value.strip().strip('"')
+    return data
+
+
+def check_operating_system() -> None:
+    step("Controllo sistema operativo")
+    if platform.system() != "Linux":
+        fail("Questo script serve solo per Linux. Su Windows usa install_windows.py (MSYS2).")
+
+    info = read_os_release()
+    os_id = info.get("ID", "").lower()
+    os_name = info.get("PRETTY_NAME", "distribuzione Linux sconosciuta")
+
+    if os_id not in SUPPORTED_OS_IDS:
+        logger.warning(
+            "[ATTENZIONE] Distribuzione non ufficialmente testata: %s. "
+            "Si prosegue comunque, ma in caso di problemi la causa potrebbe "
+            "essere questa (pacchetti apt con nomi diversi).",
+            os_name,
+        )
+    else:
+        logger.info("[OK] Sistema operativo supportato: %s", os_name)
+
+
+# ============================================================
+# FASE 2 -- Dipendenze di sistema (apt)
+# ============================================================
+
+def install_system_dependencies() -> None:
+    step("Installazione dipendenze di sistema (apt)")
+
+    if shutil.which("apt-get") is None:
+        fail(
+            "apt-get non trovato: questo script funziona solo su distribuzioni "
+            "basate su Debian/Ubuntu."
+        )
+
+    logger.info("Aggiorno l'elenco pacchetti (apt-get update)...")
+    run(["apt-get", "update"], sudo=True)
+
+    logger.info("Installo %d pacchetti: %s", len(APT_PACKAGES), ", ".join(APT_PACKAGES))
+    run(["apt-get", "install", "-y"] + APT_PACKAGES, sudo=True)
+
+    missing_tools = [tool for tool in REQUIRED_TOOLS if shutil.which(tool) is None]
+    if missing_tools:
+        fail(
+            "Anche dopo l'installazione mancano questi strumenti nel PATH: "
+            + ", ".join(missing_tools)
+        )
+    logger.info("[OK] Dipendenze di sistema installate correttamente")
+
+
+# ============================================================
+# FASE 3 -- Virtual environment e dipendenze Python
+# ============================================================
+
+def create_virtualenv_and_install_requirements() -> None:
+    step("Creazione virtual environment (.venv) e installazione pacchetti Python")
+
+    if not REQUIREMENTS_FILE.is_file():
+        fail(f"File non trovato: {REQUIREMENTS_FILE}. Esegui lo script dalla root del repository.")
+
+    if not VENV_DIR.is_dir():
+        logger.info("Creo il virtual environment in %s", VENV_DIR)
+        run([sys.executable, "-m", "venv", str(VENV_DIR)])
+    else:
+        logger.info("Virtual environment gia' presente in %s, lo riuso", VENV_DIR)
+
+    pip_path = VENV_DIR / "bin" / "pip"
+    if not pip_path.is_file():
+        fail(f"pip non trovato dentro il virtual environment: {pip_path}")
+
+    logger.info("Aggiorno pip...")
+    run([str(pip_path), "install", "--upgrade", "pip"])
+
+    logger.info("Installo i pacchetti elencati in requirements.txt (puo' richiedere qualche minuto)...")
+    run([str(pip_path), "install", "-r", str(REQUIREMENTS_FILE)])
+
+    logger.info("[OK] Ambiente Python pronto in %s", VENV_DIR)
+
+
+# ============================================================
+# FASE 4 -- Compilazione del codec vocale ETSI TETRA
+# ============================================================
+
+def _download_with_browser_headers(url: str, destination: Path) -> None:
+    """
+    Scarica un file impostando un User-Agent "da browser". Il sito ETSI
+    risponde 403 (bot detection) alle richieste che sembrano provenire
+    da script automatici, quindi urllib.request.urlretrieve() da solo
+    non basta: serve costruire manualmente la richiesta con gli header.
+    """
+    request = urllib.request.Request(url, headers={"User-Agent": DOWNLOAD_USER_AGENT})
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response, open(destination, "wb") as out_file:
+            shutil.copyfileobj(response, out_file)
+    except urllib.error.HTTPError as exc:
+        fail(
+            f"Download fallito ({exc.code} {exc.reason}) da {url}. "
+            "Se il problema persiste, l'URL potrebbe essere cambiato: "
+            "verificare manualmente sul sito ETSI e aggiornare ETSI_CODEC_URL "
+            "in cima a questo script."
+        )
+    except urllib.error.URLError as exc:
+        fail(f"Download fallito: impossibile raggiungere {url} ({exc.reason}).")
+
+
+def _verify_checksum(file_path: Path, expected_md5: str) -> None:
+    md5 = hashlib.md5()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            md5.update(chunk)
+    actual = md5.hexdigest()
+    if actual != expected_md5:
+        file_path.unlink(missing_ok=True)
+        fail(
+            f"Checksum MD5 non corrispondente per {file_path.name}: "
+            f"atteso {expected_md5}, ottenuto {actual}. Il file scaricato "
+            "potrebbe essere corrotto o l'archivio ETSI e' cambiato di versione."
+        )
+
+
+def _fix_makefile_for_modern_gcc(makefile_path: Path) -> None:
+    """
+    Il Makefile originale ETSI del 2005 usa un compilatore chiamato "acc"
+    (Sun/HP-UX, non esiste su Linux moderno) e non compila con GCC 10+
+    senza qualche aggiustamento. Questa funzione applica le stesse
+    correzioni gia' note e testate da anni nella comunita' (vedi il
+    progetto "install-tetra-codec" di sq5bpf):
+      - ACC = acc  ->  ACC = gcc
+      - aggiunge -fcommon (richiesto da GCC 10 in poi)
+      - rimuove -Werror (altrimenti anche semplici warning bloccano la build)
+    """
+    data = makefile_path.read_text(encoding="utf-8", errors="ignore")
+
+    data = re.sub(r"(?m)^ACC\s*=\s*acc\b", "ACC = gcc", data)
+    data = re.sub(r"(?m)^(\s*)acc\b", r"\1gcc", data)
+    data = re.sub(r"\bacc\b", "gcc", data)
+
+    if "-fcommon" not in data:
+        data = re.sub(r"(?m)^CFLAGS\s*=\s*(.*)$", r"CFLAGS = -fcommon \1", data)
+
+    data = data.replace("-Werror", "")
+
+    makefile_path.write_text(data, encoding="utf-8")
+
+
+def _normalize_line_endings(root: Path) -> None:
+    """L'archivio ETSI ha alcuni file con fine riga Windows (CRLF); li
+    normalizziamo a LF per evitare problemi con patch/make su Linux."""
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix.lower() in (".c", ".h") or path.name.lower() == "makefile":
+            try:
+                raw = path.read_bytes()
+                if b"\r\n" in raw:
+                    path.write_bytes(raw.replace(b"\r\n", b"\n"))
+            except OSError:
+                pass
+
+
+def _apply_osmo_tetra_patches(codec_dir: Path, work_dir: Path) -> bool:
+    """
+    Metodo primario: clona il repository osmo-tetra (che contiene le
+    patch ufficiali per rendere il codec ETSI decodificabile a partire
+    dai bit ricevuti via radio) e le applica in ordine.
+
+    Ritorna True se le patch sono state applicate, False se il metodo
+    non e' disponibile (es. nessuna connessione ai mirror) e bisogna
+    ricorrere al metodo di riserva.
+    """
+    osmo_dir = work_dir / "osmo-tetra"
+    cloned = False
+    for repo_url in OSMO_TETRA_REPO_URLS:
+        logger.info("Provo a scaricare le patch da %s ...", repo_url)
+        result = run(["git", "clone", "--depth", "1", repo_url, str(osmo_dir)], check=False)
+        if result.returncode == 0:
+            cloned = True
+            break
+        logger.warning("Mirror non raggiungibile, provo il successivo...")
+
+    if not cloned:
+        logger.warning(
+            "[ATTENZIONE] Impossibile scaricare le patch ufficiali da nessun mirror. "
+            "Procedo con il metodo di riserva (compilazione diretta, senza patch)."
+        )
+        return False
+
+    patch_dir = osmo_dir / "etsi_codec-patches"
+    series_file = patch_dir / "series"
+    if not series_file.is_file():
+        logger.warning("File 'series' delle patch non trovato, uso il metodo di riserva.")
+        return False
+
+    for patch_name in series_file.read_text(encoding="utf-8").splitlines():
+        patch_name = patch_name.strip()
+        if not patch_name or patch_name.startswith("#"):
+            continue
+        patch_file = patch_dir / patch_name
+        if not patch_file.is_file():
+            logger.warning("Patch elencata ma non trovata: %s (la salto)", patch_name)
+            continue
+        logger.info("Applico patch: %s", patch_name)
+        with open(patch_file, "rb") as f:
+            result = subprocess.run(
+                ["patch", "--batch", "-p1", "-N", "-E"],
+                cwd=str(codec_dir),
+                stdin=f,
+                capture_output=True,
+                text=True,
+            )
+        if result.returncode not in (0, 1):  # 1 = "gia' applicata", non fatale
+            logger.error("Applicazione patch fallita: %s\n%s", patch_name, result.stderr)
+            fail(f"Patch fallita: {patch_name}")
+
+    return True
+
+
+def install_tetra_codec(fallback_only: bool = False) -> None:
+    step("Compilazione del codec vocale ETSI TETRA (cdecoder / sdecoder)")
+
+    work_dir = Path(tempfile.mkdtemp(prefix="tetra-codec-"))
+    logger.debug("Cartella temporanea di lavoro: %s", work_dir)
+
+    try:
+        zip_path = work_dir / "etsi_codec.zip"
+        logger.info("Scarico il codec da ETSI...")
+        _download_with_browser_headers(ETSI_CODEC_URL, zip_path)
+
+        logger.info("Verifico il checksum del file scaricato...")
+        _verify_checksum(zip_path, ETSI_CODEC_MD5)
+        logger.info("[OK] Checksum corretto")
+
+        logger.info("Estraggo l'archivio...")
+        with zipfile.ZipFile(zip_path, "r") as archive:
+            archive.extractall(work_dir)
+
+        c_code_dir = find_path_ci(work_dir, "c-code")
+        if c_code_dir is None:
+            fail("Cartella 'c-code' non trovata nell'archivio ETSI estratto (formato inatteso).")
+
+        _normalize_line_endings(work_dir)
+
+        if not fallback_only:
+            _apply_osmo_tetra_patches(c_code_dir.parent, work_dir)
+        else:
+            logger.info("Modalita' di riserva: salto l'applicazione delle patch ufficiali.")
+
+        makefile_path = find_path_ci(c_code_dir, "makefile")
+        if makefile_path is None:
+            fail("Makefile non trovato dentro c-code/.")
+
+        logger.info("Sistemo il Makefile per un compilatore GCC moderno...")
+        _fix_makefile_for_modern_gcc(makefile_path)
+
+        logger.info("Compilo (make)...")
+        run(["make", "-f", makefile_path.name], cwd=c_code_dir)
+
+        CODEC_BIN_DIR.mkdir(parents=True, exist_ok=True)
+        wanted_binaries = ["cdecoder", "sdecoder", "ccoder", "scoder"]
+        missing = []
+        for binary_name in wanted_binaries:
+            src = find_path_ci(c_code_dir, binary_name)
+            if src is None:
+                missing.append(binary_name)
+                continue
+            dst = CODEC_BIN_DIR / binary_name
+            shutil.copy2(src, dst)
+            dst.chmod(dst.stat().st_mode | 0o111)  # +x
+            logger.info("  + %s", dst)
+
+        if missing:
+            fail(
+                "Compilazione terminata ma mancano questi binari: "
+                + ", ".join(missing)
+                + ". Guarda install.log per l'output completo di 'make'."
+            )
+
+        logger.info("[OK] Codec installato in %s", CODEC_BIN_DIR)
+
+    finally:
+        logger.debug("Pulizia cartella temporanea %s", work_dir)
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def install_tetra_codec_with_fallback() -> None:
+    """
+    Prova prima il metodo con le patch ufficiali (piu' corretto). Se
+    fallisce per un motivo di rete/ambiente, ritenta automaticamente con
+    il metodo di riserva (compilazione diretta senza patch, come faceva
+    gia' lo script Windows del progetto). Se anche questo fallisce,
+    l'errore viene mostrato con dettagli completi.
+    """
+    try:
+        install_tetra_codec(fallback_only=False)
+    except InstallError:
+        logger.warning("")
+        logger.warning("Il metodo con patch ufficiali e' fallito, provo il metodo di riserva...")
+        install_tetra_codec(fallback_only=True)
+
+
+# ============================================================
+# FASE 5 -- Verifica finale
+# ============================================================
+
+def verify_installation() -> None:
+    step("Verifica finale dell'installazione")
+
+    all_ok = True
+
+    pip_path = VENV_DIR / "bin" / "pip"
+    if pip_path.is_file():
+        logger.info("[OK] Virtual environment presente: %s", VENV_DIR)
+    else:
+        logger.error("[FALLITO] Virtual environment non trovato")
+        all_ok = False
+
+    for binary_name in ("cdecoder", "sdecoder"):
+        binary_path = CODEC_BIN_DIR / binary_name
+        if binary_path.is_file() and os.access(binary_path, os.X_OK):
+            logger.info("[OK] Binario codec presente ed eseguibile: %s", binary_path)
+        else:
+            logger.error("[FALLITO] Binario codec mancante o non eseguibile: %s", binary_path)
+            all_ok = False
+
+    check_rtl_sdr_dongle()  # solo informativo, non blocca l'installazione
+
+    if not all_ok:
+        fail("Uno o piu' controlli finali non sono andati a buon fine (vedi sopra).")
+
+    logger.info("")
+    logger.info("========================================================")
+    logger.info(" Installazione completata con successo!")
+    logger.info("")
+    logger.info(" Per avviare TetraEar:")
+    logger.info("   source %s/bin/activate", VENV_DIR)
+    logger.info("   python -m tetraear -f 392.225")
+    logger.info("========================================================")
+
+
+def check_rtl_sdr_dongle() -> None:
+    """
+    Controllo "morbido": verifica solo se sembra esserci una chiavetta
+    RTL-SDR collegata, senza bloccare l'installazione se non c'e' (magari
+    l'utente la collega dopo, o sta solo installando in anticipo).
+    """
+    if ctypes.util.find_library("rtlsdr") is None:
+        logger.warning(
+            "[INFO] Libreria librtlsdr non trovata nel sistema: "
+            "verrà rilevata solo quando colleghi una chiavetta e la usi."
+        )
+
+    if shutil.which("lsusb") is None:
+        logger.info("[INFO] 'lsusb' non disponibile, salto il controllo della chiavetta RTL-SDR.")
+        return
+
+    result = run(["lsusb"], check=False)
+    # 0bda:2838 e 0bda:2832 sono i vendor/product ID piu' comuni per le
+    # chiavette RTL2832U usate come RTL-SDR
+    if re.search(r"0bda:283[28]", result.stdout):
+        logger.info("[OK] Chiavetta RTL-SDR rilevata via USB")
+    else:
+        logger.warning(
+            "[INFO] Nessuna chiavetta RTL-SDR rilevata al momento. "
+            "Non e' un problema per l'installazione: collegala prima di avviare TetraEar."
+        )
+
+
+# ============================================================
+# --repair e --uninstall
+# ============================================================
+
+def do_repair() -> None:
+    step("Modalita' --repair: ricompilo solo il codec vocale")
+    install_tetra_codec_with_fallback()
+    verify_installation()
+
+
+def do_uninstall() -> None:
+    step("Disinstallazione")
+
+    if VENV_DIR.is_dir():
+        logger.info("Rimuovo il virtual environment: %s", VENV_DIR)
+        shutil.rmtree(VENV_DIR, ignore_errors=True)
+    else:
+        logger.info("Nessun virtual environment da rimuovere")
+
+    if CODEC_BIN_DIR.is_dir():
+        logger.info("Rimuovo i binari del codec compilati: %s", CODEC_BIN_DIR)
+        shutil.rmtree(CODEC_BIN_DIR, ignore_errors=True)
+    else:
+        logger.info("Nessun binario del codec da rimuovere")
+
+    logger.info("[OK] Disinstallazione completata (il codice sorgente non è stato toccato)")
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Installer TetraEar per Linux (Ubuntu 24.04 / Debian 12)"
+    )
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--repair", action="store_true",
+        help="Ricompila solo il codec vocale (utile se e' l'unica cosa rotta)",
+    )
+    group.add_argument(
+        "--uninstall", action="store_true",
+        help="Rimuove il virtual environment e il codec compilato",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+
+    logger.info("====== TetraEar Linux Installer v%s ======", SCRIPT_VERSION)
+    logger.info("Log completo salvato in: %s", LOG_FILE)
+
+    try:
+        if args.uninstall:
+            do_uninstall()
+            return 0
+
+        check_python_version()
+        check_operating_system()
+
+        if args.repair:
+            do_repair()
+            return 0
+
+        install_system_dependencies()
+        create_virtualenv_and_install_requirements()
+        install_tetra_codec_with_fallback()
+        verify_installation()
+        return 0
+
+    except InstallError:
+        return 1
+    except KeyboardInterrupt:
+        logger.error("\nInstallazione interrotta dall'utente.")
+        return 130
+
+
+if __name__ == "__main__":
+    sys.exit(main())
