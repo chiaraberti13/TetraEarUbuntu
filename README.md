@@ -130,6 +130,15 @@ through — the `avvia_tetraear.sh` script does exactly this.
 > with enough gain/signal. If the frames arrive but audio is silent, check
 > `codec_<id>.log` — a working codec logs `cdecoder exited 0` / `sdecoder
 > exited 0`.
+>
+> **Status says "Signal Detected (Decoding…)" but the frames table is
+> empty?** It's usually the table filters: set **Filter** to **All** and
+> **uncheck "Decrypted/Text Only"** — otherwise only already-decrypted
+> audio/text rows are shown. If frames then appear all marked 🔐, the
+> traffic is encrypted and the lock counter (e.g. `0/0` = no keys loaded)
+> confirms you have no keys, so voice can't be recovered. Also note a
+> continuous carrier is often a **control channel** (signalling): voice
+> only appears during an actual call.
 
 **4. Useful commands**
 
@@ -365,6 +374,16 @@ esce — lo script `avvia_tetraear.sh` fa esattamente questo.
 > sufficienti. Se i frame arrivano ma l'audio è muto, guarda
 > `codec_<id>.log`: un codec funzionante scrive `cdecoder exited 0` /
 > `sdecoder exited 0`.
+>
+> **Lo stato dice "Signal Detected (Decoding…)" ma la tabella dei frame è
+> vuota?** Di solito sono i filtri: imposta **Filter** su **All/Tutti** e
+> **deseleziona "Decrypted/Text Only"** — altrimenti vedi solo le righe
+> audio/testo già decifrate. Se poi i frame compaiono tutti con 🔐 il
+> traffico è cifrato e il contatore del lucchetto (es. `0/0` = nessuna
+> chiave caricata) conferma che non hai chiavi, quindi la voce non è
+> recuperabile. Ricorda inoltre che un portante continuo è spesso un
+> **canale di controllo** (segnalazione): la voce compare solo durante una
+> chiamata reale.
 
 **4. Comandi utili**
 
