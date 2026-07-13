@@ -345,6 +345,21 @@ def read_os_release() -> dict:
     return data
 
 
+def warn_if_in_trash() -> None:
+    """Se l'installer viene lanciato da dentro il Cestino, avvisa: il codice
+    e il virtual environment finirebbero in una posizione instabile (spariscono
+    svuotando il cestino) e i comandi di avvio non sarebbero riutilizzabili."""
+    p = str(INSTALLER_DIR)
+    if "/.local/share/Trash/" in p or "/.Trash" in p or "/Trash/files/" in p:
+        logger.warning("")
+        logger.warning("[ATTENZIONE] Stai eseguendo l'installer da dentro il CESTINO:")
+        logger.warning("  %s", INSTALLER_DIR)
+        logger.warning("Sposta la cartella nella tua home (o reinstalla lì) prima di usarla:")
+        logger.warning("  cd ~ && git clone https://github.com/chiaraberti13/TetraEarUbuntu.git")
+        logger.warning("  cd ~/TetraEarUbuntu && python3 install_linux.py")
+        logger.warning("")
+
+
 def check_operating_system() -> None:
     step("Controllo sistema operativo")
     if platform.system() != "Linux":
@@ -1082,6 +1097,7 @@ def main() -> int:
 
     logger.info("====== TetraEar Linux Installer v%s ======", SCRIPT_VERSION)
     logger.info("Log completo salvato in: %s", LOG_FILE)
+    warn_if_in_trash()
 
     try:
         if args.uninstall:

@@ -100,6 +100,37 @@ python -m tetraear --no-gui -f 392.225 --auto-start
 
 (replace `392.225` with the frequency in MHz you want).
 
+**Restart the app (after logout or reboot)** — just three lines:
+
+```bash
+cd ~/TetraEarUbuntu/TetraEar
+source .venv/bin/activate
+python -m tetraear -f 392.225
+```
+
+To launch it with a single word, create an alias once:
+
+```bash
+echo "alias tetraear='cd ~/TetraEarUbuntu/TetraEar && source .venv/bin/activate && python -m tetraear -f 392.225'" >> ~/.bashrc && source ~/.bashrc
+```
+
+Then just type `tetraear`. There is also a helper script — from the
+`TetraEarUbuntu` folder run `./avvia_tetraear.sh 392.225`.
+
+**Voice decoding & logs.** On every run the app writes detailed logs to
+`TetraEar/logs/`: `codec_<id>.log`, `decoder_<id>.log`, `audio_<id>.log`,
+`tetraear_<id>.log`. Run with `-v --auto-start` (add `-m` to hear the
+audio) to exercise decoding, then send those files if voice doesn't come
+through — the `avvia_tetraear.sh` script does exactly this.
+
+> ℹ️ **Why voice may not decode.** Most professional TETRA networks
+> **encrypt** their voice (TEA1–4): encrypted calls cannot be decoded
+> without the keys and appear as 🔐 in the frames table. You also need to
+> be tuned to a frequency carrying an actual **unencrypted** voice call,
+> with enough gain/signal. If the frames arrive but audio is silent, check
+> `codec_<id>.log` — a working codec logs `cdecoder exited 0` / `sdecoder
+> exited 0`.
+
 **4. Useful commands**
 
 | Command | What it does |
@@ -302,6 +333,38 @@ python -m tetraear --no-gui -f 392.225 --auto-start
 ```
 
 (sostituisci `392.225` con la frequenza in MHz che ti interessa).
+
+**Riavviare l'app (dopo logout o riavvio)** — bastano tre righe:
+
+```bash
+cd ~/TetraEarUbuntu/TetraEar
+source .venv/bin/activate
+python -m tetraear -f 392.225
+```
+
+Per avviarla con una sola parola, crea un alias una volta sola:
+
+```bash
+echo "alias tetraear='cd ~/TetraEarUbuntu/TetraEar && source .venv/bin/activate && python -m tetraear -f 392.225'" >> ~/.bashrc && source ~/.bashrc
+```
+
+Da allora basta digitare `tetraear`. C'è anche uno script pronto: dalla
+cartella `TetraEarUbuntu` esegui `./avvia_tetraear.sh 392.225`.
+
+**Decodifica vocale e log.** A ogni avvio l'app scrive log dettagliati in
+`TetraEar/logs/`: `codec_<id>.log`, `decoder_<id>.log`, `audio_<id>.log`,
+`tetraear_<id>.log`. Avvia con `-v --auto-start` (aggiungi `-m` per sentire
+l'audio) per esercitare la decodifica, poi inviami quei file se la voce non
+esce — lo script `avvia_tetraear.sh` fa esattamente questo.
+
+> ℹ️ **Perché la voce può non decodificarsi.** Nelle reti TETRA
+> professionali la voce è quasi sempre **cifrata** (TEA1–4): le chiamate
+> cifrate non sono decodificabili senza le chiavi e compaiono come 🔐 nella
+> tabella dei frame. Inoltre devi essere sintonizzato su una frequenza con
+> una chiamata vocale **in chiaro** realmente attiva, con guadagno/segnale
+> sufficienti. Se i frame arrivano ma l'audio è muto, guarda
+> `codec_<id>.log`: un codec funzionante scrive `cdecoder exited 0` /
+> `sdecoder exited 0`.
 
 **4. Comandi utili**
 
