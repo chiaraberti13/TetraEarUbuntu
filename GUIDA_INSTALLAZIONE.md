@@ -29,11 +29,34 @@ Cosa fanno gli installer, in sintesi:
 2. installano le dipendenze di sistema (compilatore, librerie RTL-SDR, Qt, audio);
 3. scaricano il codice sorgente di TetraEar;
 4. creano un ambiente virtuale Python (`.venv`) e installano i pacchetti `pip`;
-5. scaricano e compilano il codec vocale ETSI TETRA;
-6. verificano che tutto sia a posto.
+5. **configurano la chiavetta RTL-SDR** (su Linux in automatico: blacklist del
+   driver DVB-T, regole udev, permessi utente — vedi sotto);
+6. scaricano e compilano il codec vocale ETSI TETRA;
+7. verificano che tutto sia a posto.
 
-Tutto ciò che accade viene registrato nel file **`install.log`**, utile per
-il supporto in caso di problemi.
+## Il file di log `install.log` (leggimi)
+
+Ogni cosa che accade durante l'installazione — **ogni comando, ogni output e
+ogni errore, anche quelli imprevisti con il traceback completo** — viene
+salvato nel file **`install.log`**, creato nella stessa cartella
+dell'installer.
+
+Se qualcosa va storto:
+
+- **Non serve copiare la schermata**: apri (o allega) direttamente `install.log`.
+- Il file è in modalità "aggiunta": conserva anche i tentativi precedenti, così
+  la cronologia non si perde tra un `--repair` e l'altro.
+- Per trovarlo: è accanto a `install_linux.py` / `install_windows.py`. Se hai
+  lanciato l'installer da `~/tetraear-setup`, sarà `~/tetraear-setup/install.log`.
+
+Puoi prendere quel file e sottopormelo così com'è: contiene tutto il necessario
+per diagnosticare il problema.
+
+```bash
+# Linux: vedere le ultime righe / gli errori
+tail -n 50 install.log
+grep -i -E "errore|error|fallit|traceback" install.log
+```
 
 ---
 
@@ -69,6 +92,31 @@ Al termine vedrai un messaggio di riepilogo. L'installer crea, accanto a sé,
 una cartella `TetraEar/` con il codice sorgente, l'ambiente virtuale `.venv`
 e il codec compilato.
 
+### La chiavetta RTL-SDR su Linux è configurata in automatico
+
+Su Ubuntu/Debian non devi fare nulla a mano: l'installer si occupa già di
+tutto quello che serve per **usare davvero** la chiavetta (chip RTL2832U):
+
+- mette in **blacklist** i driver DVB-T del kernel (`dvb_usb_rtl28xxu` ecc.)
+  che altrimenti "occupano" la chiavetta e impediscono l'uso come SDR;
+- installa/ricarica le **regole udev** per accedere al dongle senza `sudo`;
+- aggiunge il tuo utente al gruppo **`plugdev`**.
+
+> ⚠️ **Passaggio finale obbligatorio**: dopo l'installazione **scollega e
+> ricollega** la chiavetta (oppure riavvia). Serve perché la blacklist del
+> driver e le nuove regole udev abbiano effetto. Se avevi già collegato la
+> chiavetta prima di lanciare l'installer, questo passaggio è indispensabile.
+
+Verifica che il sistema la veda (senza sudo):
+
+```bash
+rtl_test -t
+```
+
+Se compare l'elenco del dispositivo (es. "Found 1 device(s)") sei a posto. Se
+dice "usb_claim_interface error -6" significa che il driver DVB-T è ancora
+caricato: scollega/ricollega la chiavetta o riavvia.
+
 ## 1.3 Avvia TetraEar
 
 ```bash
@@ -94,9 +142,14 @@ python -m tetraear --no-gui -f 392.225 --auto-start
 - **La GUI non parte, errore "could not load the Qt platform plugin xcb"**:
   l'installer già installa le librerie Qt necessarie; se persiste, assicurati
   di essere in una sessione grafica (non solo SSH senza display).
-- **La chiavetta RTL-SDR non viene rilevata**: scollegala e ricollegala dopo
-  l'installazione (le regole udev vengono aggiunte da `apt`), oppure riavvia.
-  Verifica con `rtl_test`.
+- **La chiavetta RTL-SDR non viene rilevata / `usb_claim_interface error -6`**:
+  è il driver DVB-T ancora caricato. Scollega e ricollega la chiavetta (o
+  riavvia) — l'installer ha già messo il driver in blacklist, ma serve un
+  ricollegamento perché il kernel lo rilasci. Poi riprova con `rtl_test -t`.
+  In casi ostinati: `sudo modprobe -r dvb_usb_rtl28xxu` e ricollega.
+- **`rtl_test` chiede i permessi / funziona solo con sudo**: fai
+  logout/login una volta (serve ad attivare l'appartenenza al gruppo
+  `plugdev` aggiunta dall'installer).
 - **Il download del codec da ETSI fallisce**: riprova più tardi (a volte il
   sito ETSI è temporaneamente irraggiungibile), poi esegui
   `python3 install_linux.py --repair`.
@@ -189,8 +242,10 @@ python -m tetraear -f 392.225
 
 ## In caso di problemi (entrambi i sistemi)
 
-1. Apri il file **`install.log`** creato accanto all'installer: contiene la
-   cronologia completa e i messaggi di errore dettagliati.
+1. Apri (o allega) il file **`install.log`** creato accanto all'installer:
+   contiene la cronologia completa, i messaggi di errore dettagliati e anche
+   il traceback degli errori imprevisti. **È il file da inviare per chiedere
+   supporto** — da solo basta a capire cos'è andato storto.
 2. Riprova con l'opzione `--repair` se il problema riguarda solo il codec.
 3. Se serve ripartire da zero, usa `--uninstall` e poi reinstalla.
 

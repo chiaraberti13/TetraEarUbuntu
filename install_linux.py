@@ -114,6 +114,30 @@ APT_PACKAGES = [
 
 REQUIRED_TOOLS = ("gcc", "make", "patch", "git")
 
+# Moduli del kernel del driver DVB-T che "rubano" la chiavetta RTL2832U
+# all'uso come SDR: vanno messi in blacklist, altrimenti pyrtlsdr non
+# riesce a prendere il controllo del dongle ("usb_claim_interface error").
+RTL_SDR_BLACKLIST_MODULES = [
+    "dvb_usb_rtl28xxu",
+    "rtl2832",
+    "rtl2830",
+    "rtl2832_sdr",
+    "dvb_usb_v2",
+]
+RTL_SDR_BLACKLIST_PATH = Path("/etc/modprobe.d/blacklist-rtlsdr.conf")
+
+# Regole udev che danno accesso alla chiavetta senza sudo (gruppo plugdev).
+# Il pacchetto rtl-sdr di solito ne installa gia' una copia; se manca del
+# tutto, ne scriviamo una noi come riserva.
+RTL_SDR_UDEV_PATH = Path("/etc/udev/rules.d/60-tetraear-rtlsdr.rules")
+RTL_SDR_UDEV_RULES = (
+    '# RTL2832U usato come RTL-SDR - accesso al gruppo plugdev\n'
+    'SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2832", '
+    'GROUP="plugdev", MODE="0666", SYMLINK+="rtl_sdr"\n'
+    'SUBSYSTEM=="usb", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="2838", '
+    'GROUP="plugdev", MODE="0666", SYMLINK+="rtl_sdr"\n'
+)
+
 # ============================================================
 # LOGGING
 # ============================================================
@@ -336,8 +360,35 @@ def check_operating_system() -> None:
 # FASE 2 -- Dipendenze di sistema (apt)
 # ============================================================
 
+def ensure_sudo() -> None:
+    """
+    Se non siamo root, chiediamo SUBITO la password a sudo con un prompt
+    VISIBILE. Serve perche' le successive chiamate a sudo hanno l'output
+    catturato (per finire nel log): senza questo passo il loro prompt
+    "[sudo] password" resterebbe invisibile e lo script sembrerebbe
+    bloccato. `sudo -v` inoltre rinfresca il timer, quindi possiamo
+    richiamarlo prima di ogni fase che usa sudo senza infastidire l'utente.
+    """
+    if os.geteuid() == 0:
+        return
+    if shutil.which("sudo") is None:
+        fail(
+            "Questo script ha bisogno di 'sudo' per installare i pacchetti di "
+            "sistema, ma 'sudo' non e' presente. Installalo o esegui come root."
+        )
+    logger.info("Autenticazione amministratore: inserisci la password se richiesta.")
+    try:
+        result = subprocess.run(["sudo", "-v"])  # niente capture: prompt visibile
+    except FileNotFoundError:
+        fail("Comando 'sudo' non trovato.")
+    if result.returncode != 0:
+        fail("Autenticazione sudo fallita: impossibile installare le dipendenze di sistema.")
+
+
 def install_system_dependencies() -> None:
     step("Installazione dipendenze di sistema (apt)")
+
+    ensure_sudo()
 
     if shutil.which("apt-get") is None:
         fail(
@@ -609,6 +660,99 @@ def install_tetra_codec_with_fallback() -> None:
 
 
 # ============================================================
+# FASE 4b -- Configurazione hardware RTL-SDR
+# ============================================================
+
+def _write_root_file(destination: Path, content: str) -> None:
+    """Scrive un file di sistema (serve root) passando da un file
+    temporaneo + copia con sudo, senza usare shell=True."""
+    tmp_dir = Path(tempfile.mkdtemp(prefix="rtlsdr-cfg-"))
+    try:
+        tmp_file = tmp_dir / destination.name
+        tmp_file.write_text(content, encoding="utf-8")
+        run(["cp", str(tmp_file), str(destination)], sudo=True)
+        run(["chmod", "644", str(destination)], sudo=True, check=False)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
+def configure_rtl_sdr() -> None:
+    """
+    Rende la chiavetta RTL-SDR (chip RTL2832U) davvero utilizzabile:
+      1. mette in blacklist i driver DVB-T del kernel che altrimenti
+         "occupano" la chiavetta impedendone l'uso come SDR;
+      2. scarica subito quel driver se e' gia' caricato (best effort);
+      3. installa/ricarica le regole udev per l'accesso senza sudo;
+      4. aggiunge l'utente al gruppo plugdev.
+
+    E' tutto "best effort": se qualcosa non riesce l'installazione non si
+    blocca, ma l'errore resta comunque scritto in install.log.
+    """
+    step("Configurazione della chiavetta RTL-SDR (driver kernel e permessi)")
+
+    # Rinfresca l'autenticazione sudo: tra l'apt e questo punto sono passati
+    # l'installazione di pip e altre fasi lunghe, il timer sudo potrebbe
+    # essere scaduto e le chiamate sudo successive (con output catturato)
+    # resterebbero altrimenti bloccate su un prompt invisibile.
+    ensure_sudo()
+
+    # 1. Blacklist dei moduli DVB-T
+    blacklist_content = (
+        "# Generato da TetraEar install_linux.py\n"
+        "# Impedisce ai driver DVB-T del kernel di occupare la chiavetta RTL2832U,\n"
+        "# cosi' puo' essere usata come RTL-SDR.\n"
+        + "".join(f"blacklist {m}\n" for m in RTL_SDR_BLACKLIST_MODULES)
+    )
+    logger.info("Scrivo la blacklist dei driver DVB-T in %s", RTL_SDR_BLACKLIST_PATH)
+    try:
+        _write_root_file(RTL_SDR_BLACKLIST_PATH, blacklist_content)
+    except InstallError:
+        logger.warning("[ATTENZIONE] Non sono riuscito a scrivere la blacklist (vedi install.log).")
+
+    # 2. Scarico subito il driver DVB-T se attualmente caricato
+    for module in ("dvb_usb_rtl28xxu", "rtl2832_sdr", "rtl2832"):
+        run(["modprobe", "-r", module], sudo=True, check=False)
+
+    # 3. Regole udev: se il pacchetto rtl-sdr non ne ha gia' installata una,
+    #    ne mettiamo una nostra. In ogni caso ricarichiamo le regole.
+    existing_rules = list(Path("/etc/udev/rules.d").glob("*rtlsdr*")) + \
+        list(Path("/lib/udev/rules.d").glob("*rtlsdr*")) + \
+        list(Path("/usr/lib/udev/rules.d").glob("*rtlsdr*"))
+    if existing_rules:
+        logger.info("Regole udev RTL-SDR gia' presenti: %s", ", ".join(str(p) for p in existing_rules))
+    else:
+        logger.info("Installo regole udev di riserva in %s", RTL_SDR_UDEV_PATH)
+        try:
+            _write_root_file(RTL_SDR_UDEV_PATH, RTL_SDR_UDEV_RULES)
+        except InstallError:
+            logger.warning("[ATTENZIONE] Non sono riuscito a scrivere le regole udev (vedi install.log).")
+
+    if shutil.which("udevadm"):
+        run(["udevadm", "control", "--reload-rules"], sudo=True, check=False)
+        run(["udevadm", "trigger"], sudo=True, check=False)
+
+    # 4. Aggiungo l'utente reale (non root) al gruppo plugdev
+    real_user = os.environ.get("SUDO_USER") or os.environ.get("USER") or ""
+    if real_user and real_user != "root":
+        result = run(["usermod", "-aG", "plugdev", real_user], sudo=True, check=False)
+        if result.returncode == 0:
+            logger.info(
+                "Utente '%s' aggiunto al gruppo plugdev "
+                "(effettua logout/login perche' abbia effetto).",
+                real_user,
+            )
+        else:
+            logger.warning("[ATTENZIONE] Non sono riuscito ad aggiungere '%s' a plugdev.", real_user)
+
+    logger.info("[OK] Configurazione RTL-SDR applicata")
+    logger.warning(
+        "[IMPORTANTE] Se la chiavetta era gia' collegata, SCOLLEGALA e "
+        "RICOLLEGALA (oppure riavvia) affinche' la blacklist del driver "
+        "DVB-T e le nuove regole udev abbiano effetto."
+    )
+
+
+# ============================================================
 # FASE 5 -- Verifica finale
 # ============================================================
 
@@ -747,15 +891,29 @@ def main() -> int:
         install_system_dependencies()
         ensure_tetraear_source(clone_if_missing=True)
         create_virtualenv_and_install_requirements()
+        # La configurazione della chiavetta viene fatta PRIMA del codec:
+        # il codec dipende da un download esterno (ETSI) che potrebbe
+        # fallire, ma il dongle dev'essere comunque pronto all'uso.
+        configure_rtl_sdr()
         install_tetra_codec_with_fallback()
         verify_installation()
         return 0
 
     except InstallError:
+        # Errore gia' stampato in modo chiaro da fail(): usciamo.
         return 1
     except KeyboardInterrupt:
         logger.error("\nInstallazione interrotta dall'utente.")
         return 130
+    except Exception:
+        # Rete di sicurezza: qualsiasi errore NON previsto viene comunque
+        # salvato per intero (con traceback) in install.log, cosi' non si
+        # perde niente da sottoporre a chi fa supporto.
+        logger.error("")
+        logger.error("[ERRORE IMPREVISTO] Si e' verificato un errore non gestito.")
+        logger.error("Il traceback completo e' stato salvato in: %s", LOG_FILE)
+        logger.debug("Traceback completo dell'errore imprevisto:", exc_info=True)
+        return 1
 
 
 if __name__ == "__main__":
