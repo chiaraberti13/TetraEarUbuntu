@@ -850,20 +850,21 @@ def configure_rtl_sdr() -> None:
 
 def patch_pyrtlsdr_dithering() -> None:
     """
-    Il wrapper Python pyrtlsdr lega la funzione 'rtlsdr_set_dithering' in
-    modo NON opzionale (altre funzioni recenti sono in try/except, questa
-    no). Quel simbolo esiste solo nel fork 'keenerd' di librtlsdr, NON
-    nella versione distribuita da Ubuntu: senza intervento TetraEar non
-    parte, con l'errore:
+    pyrtlsdr lega MOLTE funzioni di librtlsdr in modo NON opzionale (senza
+    try/except): rtlsdr_set_dithering, rtlsdr_set_gpio_output, ecc. Diverse
+    di queste esistono solo nel fork 'keenerd' di librtlsdr e NON nella
+    versione distribuita da Ubuntu, quindi l'import di 'rtlsdr' fallisce con:
 
-        AttributeError: .../librtlsdr.so: undefined symbol: rtlsdr_set_dithering
+        AttributeError: .../librtlsdr.so: undefined symbol: rtlsdr_set_...
 
-    Rendiamo quel binding tollerante: se il simbolo manca, installiamo uno
-    stub innocuo. Il dithering e' una funzione accessoria (serve solo a
-    disattivare il dithering di frequenza) e TetraEar non ne ha bisogno,
-    quindi l'app funziona perfettamente con la librtlsdr standard di Ubuntu.
+    Invece di correggere ogni singolo binding (sono tanti), avvolgiamo
+    l'oggetto libreria in un piccolo proxy: per ogni simbolo realmente
+    presente restituisce la funzione vera, per i simboli mancanti
+    restituisce uno stub innocuo (che ritorna 0). Cosi' l'import non
+    fallisce mai e TetraEar funziona con la librtlsdr standard di Ubuntu
+    (quelle funzioni mancanti sono accessorie e non vengono usate).
     """
-    step("Compatibilita' pyrtlsdr / librtlsdr (patch dithering)")
+    step("Compatibilita' pyrtlsdr / librtlsdr")
 
     matches = list(VENV_DIR.glob("**/site-packages/rtlsdr/librtlsdr.py"))
     if not matches:
@@ -872,47 +873,46 @@ def patch_pyrtlsdr_dithering() -> None:
     target = matches[0]
 
     content = target.read_text(encoding="utf-8")
-    if "_rtlsdr_set_dithering_stub" in content:
+    if "_TetraEarTolerantLib" in content:
         logger.info("[OK] pyrtlsdr gia' compatibile (patch gia' applicata).")
         return
 
     lines = content.splitlines()
-    out = []
-    patched = False
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if (
-            not patched
-            and line.strip() == "f = librtlsdr.rtlsdr_set_dithering"
-            and i + 1 < len(lines)
-            and "f.restype" in lines[i + 1]
-        ):
-            indent = line[: len(line) - len(line.lstrip())]
-            restype_line = lines[i + 1].strip()
-            out.append(f"{indent}try:")
-            out.append(f"{indent}    f = librtlsdr.rtlsdr_set_dithering")
-            out.append(f"{indent}    {restype_line}")
-            out.append(f"{indent}except AttributeError:")
-            out.append(f"{indent}    # Simbolo assente nella librtlsdr di Ubuntu: stub innocuo.")
-            out.append(f"{indent}    def _rtlsdr_set_dithering_stub(dev, dither):")
-            out.append(f"{indent}        return 0")
-            out.append(f"{indent}    librtlsdr.rtlsdr_set_dithering = _rtlsdr_set_dithering_stub")
-            i += 2
-            patched = True
-            continue
-        out.append(line)
-        i += 1
-
-    if not patched:
+    binding_re = re.compile(r"^\s*f\s*=\s*librtlsdr\.")
+    insert_at = next((idx for idx, ln in enumerate(lines) if binding_re.match(ln)), None)
+    if insert_at is None:
         logger.warning(
-            "[ATTENZIONE] Non ho trovato il punto da correggere in pyrtlsdr "
-            "(versione diversa del pacchetto?). Se all'avvio compare "
-            "'undefined symbol: rtlsdr_set_dithering', segnalalo."
+            "[ATTENZIONE] Struttura di pyrtlsdr non riconosciuta: patch non "
+            "applicata. Se all'avvio compare 'undefined symbol: rtlsdr_...', segnalalo."
         )
         return
 
-    new_content = "\n".join(out)
+    wrapper = [
+        "",
+        "# --- Patch di compatibilita' TetraEar --------------------------------",
+        "# Avvolge librtlsdr in un proxy che, per i simboli assenti nella libreria",
+        "# di sistema (Ubuntu), restituisce uno stub innocuo invece di far fallire",
+        "# l'import. Le funzioni interessate (dithering, gpio, ...) sono accessorie.",
+        "class _TetraEarTolerantLib:",
+        "    def __init__(self, _lib):",
+        "        object.__setattr__(self, '_lib', _lib)",
+        "    def __getattr__(self, name):",
+        "        _lib = object.__getattribute__(self, '_lib')",
+        "        try:",
+        "            return getattr(_lib, name)",
+        "        except AttributeError:",
+        "            if name.startswith('__') and name.endswith('__'):",
+        "                raise",
+        "            def _tetraear_missing(*args, **kwargs):",
+        "                return 0",
+        "            return _tetraear_missing",
+        "librtlsdr = _TetraEarTolerantLib(librtlsdr)",
+        "# --- Fine patch di compatibilita' TetraEar ---------------------------",
+        "",
+    ]
+
+    new_lines = lines[:insert_at] + wrapper + lines[insert_at:]
+    new_content = "\n".join(new_lines)
     if content.endswith("\n"):
         new_content += "\n"
     target.write_text(new_content, encoding="utf-8")
