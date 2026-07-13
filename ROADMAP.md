@@ -79,6 +79,14 @@ deve, da solo, su una macchina Ubuntu 24.04 o Debian 12 pulita:
 
 ## Consegna finale
 
+- [x] Guida in italiano all'installazione: `GUIDA_INSTALLAZIONE.md`
+      (prima Ubuntu/Debian, poi Windows)
+- [x] Installer Windows automatizzato: `install_windows.bat`
+      (bootstrap che installa Python se manca) + `install_windows.py`
+      (winget per Git/MSYS2, clona TetraEar, venv, requirements, codec)
+- [x] Installer Linux reso "da zero": ora clona da solo il repo TetraEar
+      se non è già presente (non serve più `git clone` manuale)
+- [x] Disclaimer ufficiale replicato in `DISCLAIMER.md` e richiamato nella guida
 - [ ] `README_LINUX.md` (o sezione dedicata nel README principale) con la
       guida in italiano all'installazione
 - [ ] `install.log` di esempio incluso/documentato per chi deve fare
