@@ -27,7 +27,7 @@ Cosa fa, in ordine:
 Nota sull'hardware RTL-SDR: su Windows la chiavetta richiede il driver
 WinUSB installato con Zadig e la libreria rtlsdr.dll nel PATH. Questi due
 passaggi sono, per loro natura, semi-manuali e sono spiegati nella guida
-(GUIDA_INSTALLAZIONE.md). L'installer avvisa ma non blocca.
+(README.md). L'installer avvisa ma non blocca.
 
 Ogni passaggio scrive sia a schermo che nel file install.log.
 """
@@ -617,7 +617,7 @@ def warn_about_rtl_sdr_on_windows() -> None:
         "[IMPORTANTE] Prima di usare la chiavetta RTL-SDR su Windows devi:\n"
         "  1) installare il driver WinUSB con Zadig (https://zadig.akeo.ie/);\n"
         "  2) avere rtlsdr.dll raggiungibile nel PATH.\n"
-        "  Vedi la sezione 'RTL-SDR su Windows' in GUIDA_INSTALLAZIONE.md."
+        "  Vedi la sezione 'RTL-SDR su Windows' in README.md."
     )
 
 
