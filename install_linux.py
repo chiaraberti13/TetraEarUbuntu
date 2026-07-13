@@ -568,6 +568,32 @@ def _fix_makefile_for_modern_gcc(makefile_path: Path) -> None:
     makefile_path.write_text(data, encoding="utf-8")
 
 
+def _lowercase_filenames(directory: Path) -> None:
+    """
+    L'archivio ETSI del codec contiene i file con i nomi in MAIUSCOLO
+    (es. SCODER.C, MAKEFILE), ma il Makefile al suo interno li referenzia
+    in minuscolo (scoder.c). Su Linux, che distingue maiuscole/minuscole,
+    'make' fallisce con "No such file or directory". Rinominiamo quindi in
+    minuscolo tutti i file, esattamente come fa lo script noto di sq5bpf.
+
+    Rinominiamo solo i file (non le cartelle): il Makefile referenzia i
+    sorgenti in modo "piatto", nella stessa directory.
+    """
+    for path in directory.rglob("*"):
+        if not path.is_file():
+            continue
+        lower_name = path.name.lower()
+        if lower_name == path.name:
+            continue
+        target = path.parent / lower_name
+        if target.exists():
+            # Una versione minuscola esiste gia' (es. creata da una patch):
+            # teniamo quella e rimuoviamo il duplicato in maiuscolo.
+            path.unlink()
+        else:
+            path.rename(target)
+
+
 def _normalize_line_endings(root: Path) -> None:
     """L'archivio ETSI ha alcuni file con fine riga Windows (CRLF); li
     normalizziamo a LF per evitare problemi con patch/make su Linux."""
@@ -660,6 +686,11 @@ def install_tetra_codec(fallback_only: bool = False) -> None:
         c_code_dir = find_path_ci(work_dir, "c-code")
         if c_code_dir is None:
             fail("Cartella 'c-code' non trovata nell'archivio ETSI estratto (formato inatteso).")
+
+        # L'archivio ETSI usa nomi MAIUSCOLI ma il Makefile richiama i
+        # sorgenti in minuscolo: su Linux va uniformato prima di compilare.
+        logger.info("Uniformo i nomi dei file del codec in minuscolo...")
+        _lowercase_filenames(c_code_dir)
 
         _normalize_line_endings(work_dir)
 
