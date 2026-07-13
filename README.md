@@ -153,6 +153,12 @@ python -m tetraear --no-gui -f 392.225 --auto-start
 - **Il download del codec da ETSI fallisce**: riprova più tardi (a volte il
   sito ETSI è temporaneamente irraggiungibile), poi esegui
   `python3 install_linux.py --repair`.
+- **All'avvio: `undefined symbol: rtlsdr_set_dithering`**: è un'incompatibilità
+  tra `pyrtlsdr` e la `librtlsdr` di sistema (la versione di Ubuntu non ha
+  quella funzione). L'installer la risolve compilando il fork **rtl-sdr-blog**;
+  se hai aggiornato lo script, rilancia `python3 install_linux.py` (o
+  `--repair`). Dopo, chiudi e riapri il terminale. Non dipende dalla chiavetta:
+  l'errore compare all'`import`, prima di usare l'hardware.
 
 ---
 

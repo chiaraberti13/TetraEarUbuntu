@@ -94,14 +94,21 @@ OSMO_TETRA_REPO_URLS = [
     "https://github.com/osmocom/osmo-tetra.git",
 ]
 
+# Il fork rtl-sdr-blog di librtlsdr espone le funzioni recenti (es.
+# rtlsdr_set_dithering) richieste dal wrapper Python pyrtlsdr, che nella
+# libreria "osmocom" distribuita da Ubuntu mancano. Lo compiliamo solo se
+# la libreria di sistema non e' gia' compatibile.
+RTLSDR_BLOG_REPO_URL = "https://github.com/rtlsdrblog/rtl-sdr-blog.git"
+
 # Pacchetti di sistema richiesti (validi sia per Ubuntu 24.04 che Debian 12).
 # NOTA: qui NON mettiamo la libreria runtime di RTL-SDR (librtlsdrN) perche'
 # il suo nome cambia da release a release (es. librtlsdr0 su bookworm/22.04,
 # librtlsdr2 su noble 24.04). La gestiamo a parte con una lista di candidati,
 # e comunque "librtlsdr-dev" e "rtl-sdr" tirano dietro la runtime corretta.
 APT_PACKAGES = [
-    # Toolchain per compilare il codec vocale (e' codice C, non Python)
-    "build-essential", "gcc", "make", "patch", "git", "wget", "unzip", "ca-certificates",
+    # Toolchain per compilare il codec vocale e la libreria rtl-sdr-blog
+    "build-essential", "gcc", "make", "cmake", "pkg-config",
+    "patch", "git", "wget", "unzip", "ca-certificates",
     # Ambiente Python: venv + header per eventuali estensioni C dei pacchetti pip
     "python3-venv", "python3-dev", "python3-pip",
     # RTL-SDR: header di sviluppo + tool a riga di comando (rtl_test, ecc.)
@@ -845,6 +852,87 @@ def configure_rtl_sdr() -> None:
     )
 
 
+def _system_librtlsdr_has_symbol(symbol: str) -> bool:
+    """Verifica se la libreria librtlsdr installata nel sistema espone un
+    determinato simbolo (funzione). Serve per capire se la versione di
+    Ubuntu e' compatibile con pyrtlsdr o se dobbiamo installarne una piu'
+    recente."""
+    candidates = []
+    found = ctypes.util.find_library("rtlsdr")
+    if found:
+        candidates.append(found)
+    candidates += ["librtlsdr.so", "librtlsdr.so.0"]
+    for cand in candidates:
+        try:
+            lib = ctypes.CDLL(cand)
+        except OSError:
+            continue
+        if hasattr(lib, symbol):
+            return True
+    return False
+
+
+def install_compatible_librtlsdr() -> None:
+    """
+    Il wrapper Python pyrtlsdr richiede funzioni recenti di librtlsdr (in
+    particolare 'rtlsdr_set_dithering') che NON sono presenti nella
+    versione "osmocom" distribuita da Ubuntu. Senza di esse TetraEar non
+    parte nemmeno, con l'errore:
+
+        AttributeError: .../librtlsdr.so: undefined symbol: rtlsdr_set_dithering
+
+    Per risolvere in modo definitivo compiliamo e installiamo il fork
+    rtl-sdr-blog (che espone quelle funzioni ed e' anche quello consigliato
+    per le chiavette RTL-SDR piu' recenti, v3/v4). Se la libreria di
+    sistema e' gia' compatibile, non facciamo nulla.
+    """
+    step("Libreria RTL-SDR compatibile con pyrtlsdr (rtl-sdr-blog)")
+
+    if _system_librtlsdr_has_symbol("rtlsdr_set_dithering"):
+        logger.info("[OK] La libreria librtlsdr di sistema e' gia' compatibile con pyrtlsdr.")
+        return
+
+    logger.info(
+        "La libreria di sistema non espone 'rtlsdr_set_dithering' (richiesta da "
+        "pyrtlsdr): compilo e installo il fork rtl-sdr-blog."
+    )
+    ensure_sudo()
+
+    for tool in ("cmake", "git", "make", "gcc"):
+        if shutil.which(tool) is None:
+            fail(f"Strumento necessario mancante per compilare librtlsdr: {tool}.")
+
+    work_dir = Path(tempfile.mkdtemp(prefix="rtl-sdr-blog-"))
+    try:
+        src_dir = work_dir / "rtl-sdr-blog"
+        logger.info("Scarico rtl-sdr-blog...")
+        run(["git", "clone", "--depth", "1", RTLSDR_BLOG_REPO_URL, str(src_dir)])
+
+        build_dir = src_dir / "build"
+        build_dir.mkdir()
+        logger.info("Configuro la build (cmake)...")
+        run(
+            ["cmake", "..", "-DINSTALL_UDEV_RULES=ON", "-DDETACH_KERNEL_DRIVER=ON"],
+            cwd=build_dir,
+        )
+        logger.info("Compilo la libreria (make)...")
+        run(["make", f"-j{os.cpu_count() or 1}"], cwd=build_dir)
+        logger.info("Installo la libreria in /usr/local e aggiorno la cache (ldconfig)...")
+        run(["make", "install"], cwd=build_dir, sudo=True)
+        run(["ldconfig"], sudo=True)
+
+        if _system_librtlsdr_has_symbol("rtlsdr_set_dithering"):
+            logger.info("[OK] Libreria librtlsdr compatibile installata correttamente.")
+        else:
+            logger.warning(
+                "[ATTENZIONE] rtl-sdr-blog installato, ma il simbolo "
+                "'rtlsdr_set_dithering' non risulta ancora caricabile. Prova a "
+                "chiudere e riaprire il terminale (o riavviare) e riesegui la verifica."
+            )
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
 # ============================================================
 # FASE 5 -- Verifica finale
 # ============================================================
@@ -869,7 +957,8 @@ def verify_installation() -> None:
             logger.error("[FALLITO] Binario codec mancante o non eseguibile: %s", binary_path)
             all_ok = False
 
-    check_rtl_sdr_dongle()  # solo informativo, non blocca l'installazione
+    verify_pyrtlsdr_import()  # controlla il mismatch libreria/pyrtlsdr
+    check_rtl_sdr_dongle()    # solo informativo, non blocca l'installazione
 
     if not all_ok:
         fail("Uno o piu' controlli finali non sono andati a buon fine (vedi sopra).")
@@ -883,6 +972,31 @@ def verify_installation() -> None:
     logger.info("   source .venv/bin/activate")
     logger.info("   python -m tetraear -f 392.225")
     logger.info("========================================================")
+
+
+def verify_pyrtlsdr_import() -> None:
+    """
+    Controllo end-to-end: prova a importare 'rtlsdr' dentro il venv. E' qui
+    che si manifesta l'incompatibilita' fra pyrtlsdr e la libreria librtlsdr
+    di sistema ('undefined symbol: rtlsdr_set_dithering'). Non blocca
+    l'installazione, ma segnala chiaramente il problema in caso.
+    """
+    python_path = VENV_DIR / "bin" / "python"
+    if not python_path.is_file():
+        return
+    result = run(
+        [str(python_path), "-c", "from rtlsdr import RtlSdr"],
+        check=False,
+    )
+    if result.returncode == 0:
+        logger.info("[OK] Il modulo Python 'rtlsdr' (pyrtlsdr) si importa correttamente.")
+    else:
+        logger.warning(
+            "[ATTENZIONE] Import di 'rtlsdr' fallito: la libreria librtlsdr di "
+            "sistema potrebbe non essere compatibile con pyrtlsdr. Riesegui "
+            "l'installer (verra' compilato rtl-sdr-blog). Dettaglio:\n%s",
+            result.stderr.strip(),
+        )
 
 
 def check_rtl_sdr_dongle() -> None:
@@ -918,8 +1032,9 @@ def check_rtl_sdr_dongle() -> None:
 # ============================================================
 
 def do_repair() -> None:
-    step("Modalita' --repair: ricompilo solo il codec vocale")
+    step("Modalita' --repair: ricompilo il codec vocale e sistemo la libreria RTL-SDR")
     ensure_tetraear_source(clone_if_missing=True)
+    install_compatible_librtlsdr()
     install_tetra_codec_with_fallback()
     verify_installation()
 
@@ -988,6 +1103,7 @@ def main() -> int:
         # il codec dipende da un download esterno (ETSI) che potrebbe
         # fallire, ma il dongle dev'essere comunque pronto all'uso.
         configure_rtl_sdr()
+        install_compatible_librtlsdr()
         install_tetra_codec_with_fallback()
         verify_installation()
         return 0
