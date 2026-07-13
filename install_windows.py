@@ -376,6 +376,69 @@ def create_virtualenv_and_install_requirements() -> None:
 
     logger.info("[OK] Ambiente Python pronto in %s", VENV_DIR)
 
+    patch_pyrtlsdr_dithering()
+
+
+def patch_pyrtlsdr_dithering() -> None:
+    """
+    pyrtlsdr lega 'rtlsdr_set_dithering' in modo NON opzionale, ma quel
+    simbolo esiste solo nel fork 'keenerd' di librtlsdr: con una rtlsdr.dll
+    che non lo espone, TetraEar non parte ('undefined symbol:
+    rtlsdr_set_dithering'). Rendiamo quel binding tollerante con uno stub
+    innocuo (il dithering non serve a TetraEar).
+    """
+    step("Compatibilita' pyrtlsdr / librtlsdr (patch dithering)")
+
+    matches = list(VENV_DIR.glob("**/site-packages/rtlsdr/librtlsdr.py"))
+    if not matches:
+        logger.info("[INFO] pyrtlsdr non trovato nel venv, salto la patch.")
+        return
+    target = matches[0]
+
+    content = target.read_text(encoding="utf-8")
+    if "_rtlsdr_set_dithering_stub" in content:
+        logger.info("[OK] pyrtlsdr gia' compatibile (patch gia' applicata).")
+        return
+
+    lines = content.splitlines()
+    out, patched, i = [], False, 0
+    while i < len(lines):
+        line = lines[i]
+        if (
+            not patched
+            and line.strip() == "f = librtlsdr.rtlsdr_set_dithering"
+            and i + 1 < len(lines)
+            and "f.restype" in lines[i + 1]
+        ):
+            indent = line[: len(line) - len(line.lstrip())]
+            restype_line = lines[i + 1].strip()
+            out.append(f"{indent}try:")
+            out.append(f"{indent}    f = librtlsdr.rtlsdr_set_dithering")
+            out.append(f"{indent}    {restype_line}")
+            out.append(f"{indent}except AttributeError:")
+            out.append(f"{indent}    def _rtlsdr_set_dithering_stub(dev, dither):")
+            out.append(f"{indent}        return 0")
+            out.append(f"{indent}    librtlsdr.rtlsdr_set_dithering = _rtlsdr_set_dithering_stub")
+            i += 2
+            patched = True
+            continue
+        out.append(line)
+        i += 1
+
+    if not patched:
+        logger.warning(
+            "[ATTENZIONE] Non ho trovato il punto da correggere in pyrtlsdr "
+            "(versione diversa?). Se all'avvio compare 'undefined symbol: "
+            "rtlsdr_set_dithering', segnalalo."
+        )
+        return
+
+    new_content = "\n".join(out)
+    if content.endswith("\n"):
+        new_content += "\n"
+    target.write_text(new_content, encoding="utf-8")
+    logger.info("[OK] pyrtlsdr reso compatibile con la libreria RTL-SDR.")
+
 
 # ============================================================
 # FASE 4 -- Compilazione del codec vocale ETSI TETRA (via MSYS2)
@@ -649,8 +712,9 @@ def warn_about_rtl_sdr_on_windows() -> None:
 # ============================================================
 
 def do_repair() -> None:
-    step("Modalita' --repair: ricompilo solo il codec vocale")
+    step("Modalita' --repair: ricompilo il codec vocale e sistemo la compatibilita' pyrtlsdr")
     ensure_tetraear_source(clone_if_missing=True)
+    patch_pyrtlsdr_dithering()
     ensure_msys2_toolchain()
     install_tetra_codec_with_fallback()
     verify_installation()
