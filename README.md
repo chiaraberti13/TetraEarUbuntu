@@ -65,18 +65,16 @@ grep -i -E "errore|error|fallit|traceback" install.log
 Testato su **Ubuntu 24.04** e **Debian 12** (dovrebbe funzionare anche su
 derivate recenti come Linux Mint e Pop!_OS).
 
-## 1.1 Scarica l'installer
+## 1.1 Scarica gli installer
 
-Ti basta il file `install_linux.py`. Puoi ottenerlo così:
+Clona questa repository ed entra nella cartella:
 
 ```bash
-# opzione A: scarica solo l'installer in una cartella nuova
-mkdir -p ~/tetraear-setup && cd ~/tetraear-setup
-wget https://raw.githubusercontent.com/chiaraberti13/TetraEarUbuntu/main/install_linux.py
-
-# opzione B: se hai già clonato questa repo, entra nella sua cartella
-cd /percorso/della/repo
+git clone https://github.com/chiaraberti13/TetraEarUbuntu.git
+cd TetraEarUbuntu
 ```
+
+> Se non hai `git`: `sudo apt update && sudo apt install -y git`, poi ripeti.
 
 ## 1.2 Avvia l'installazione
 
@@ -168,15 +166,20 @@ python -m tetraear --no-gui -f 392.225 --auto-start
 
 Testato su **Windows 10** e **Windows 11** (64 bit).
 
-## 2.1 Scarica l'installer
+## 2.1 Scarica gli installer
 
-Ti servono due file, nella stessa cartella:
+Se hai **Git per Windows**, la via più semplice è clonare la repository
+(Prompt dei comandi o PowerShell):
 
-- `install_windows.bat`
-- `install_windows.py`
+```bat
+git clone https://github.com/chiaraberti13/TetraEarUbuntu.git
+cd TetraEarUbuntu
+```
 
-Scaricali entrambi (per esempio nella cartella `Download`) dalla repo:
-<https://github.com/chiaraberti13/TetraEarUbuntu>.
+In alternativa, senza Git: apri
+<https://github.com/chiaraberti13/TetraEarUbuntu>, premi **Code → Download ZIP**,
+estrai l'archivio e apri la cartella. In entrambi i casi ti servono, nella
+stessa cartella, i file `install_windows.bat` e `install_windows.py`.
 
 ## 2.2 Avvia l'installazione
 
