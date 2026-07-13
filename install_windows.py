@@ -476,10 +476,15 @@ def _verify_checksum(file_path: Path, expected_md5: str) -> None:
 
 
 def _lowercase_filenames(directory: Path) -> None:
-    """L'archivio ETSI usa nomi MAIUSCOLI (SCODER.C, MAKEFILE) ma il
-    Makefile li richiama in minuscolo. Uniformiamo in minuscolo tutti i
-    file (utile soprattutto quando si compila su filesystem
-    case-sensitive)."""
+    """
+    L'archivio ETSI usa nomi MAIUSCOLI (SCODER.C, MAKEFILE) ma il Makefile
+    li richiama in minuscolo. Uniformiamo in minuscolo tutti i file.
+
+    ATTENZIONE: su Windows il filesystem NTFS e' case-insensitive, quindi
+    per 'MAKEFILE' il percorso 'makefile' risulta gia' esistente (e' lo
+    STESSO file). In quel caso NON bisogna cancellarlo: si rinomina in due
+    passi (via nome temporaneo) per forzare il cambio di maiuscole/minuscole.
+    """
     for path in directory.rglob("*"):
         if not path.is_file():
             continue
@@ -487,10 +492,34 @@ def _lowercase_filenames(directory: Path) -> None:
         if lower_name == path.name:
             continue
         target = path.parent / lower_name
-        if target.exists():
+        try:
+            same_file = target.exists() and target.samefile(path)
+        except OSError:
+            same_file = False
+        if same_file:
+            # Filesystem case-insensitive: rinomina in due passi.
+            tmp = path.parent / (path.name + ".tetra-tmp")
+            path.rename(tmp)
+            tmp.rename(target)
+        elif target.exists():
+            # Collisione con un file realmente diverso: rimuovo il duplicato.
             path.unlink()
         else:
             path.rename(target)
+
+
+def _normalize_line_endings(root: Path) -> None:
+    """L'archivio ETSI ha file con fine riga Windows (CRLF): li normalizziamo
+    a LF, altrimenti le patch osmocom falliscono con
+    'Hunk FAILED (different line endings)'."""
+    for path in root.rglob("*"):
+        if path.is_file() and path.suffix.lower() in (".c", ".h") or path.name.lower() == "makefile":
+            try:
+                raw = path.read_bytes()
+                if b"\r\n" in raw:
+                    path.write_bytes(raw.replace(b"\r\n", b"\n"))
+            except OSError:
+                pass
 
 
 def _fix_makefile_for_modern_gcc(makefile_path: Path) -> None:
@@ -596,6 +625,9 @@ def install_tetra_codec(fallback_only: bool = False) -> None:
         # minuscolo: uniformiamo prima di compilare.
         logger.info("Uniformo i nomi dei file del codec in minuscolo...")
         _lowercase_filenames(c_code_dir)
+
+        # Normalizziamo CRLF -> LF, altrimenti le patch osmocom falliscono.
+        _normalize_line_endings(work_dir)
 
         if not fallback_only:
             _apply_osmo_tetra_patches(bash_exe, c_code_dir.parent, work_dir)
