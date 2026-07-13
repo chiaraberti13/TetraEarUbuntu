@@ -79,7 +79,7 @@ deve, da solo, su una macchina Ubuntu 24.04 o Debian 12 pulita:
 
 ## Consegna finale
 
-- [x] Guida in italiano all'installazione: `GUIDA_INSTALLAZIONE.md`
+- [x] Guida in italiano all'installazione: `README.md`
       (prima Ubuntu/Debian, poi Windows)
 - [x] Installer Windows automatizzato: `install_windows.bat`
       (bootstrap che installa Python se manca) + `install_windows.py`
