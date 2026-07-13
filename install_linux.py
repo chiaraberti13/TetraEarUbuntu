@@ -94,15 +94,19 @@ OSMO_TETRA_REPO_URLS = [
     "https://github.com/osmocom/osmo-tetra.git",
 ]
 
-# Pacchetti di sistema richiesti (validi sia per Ubuntu 24.04 che Debian 12)
+# Pacchetti di sistema richiesti (validi sia per Ubuntu 24.04 che Debian 12).
+# NOTA: qui NON mettiamo la libreria runtime di RTL-SDR (librtlsdrN) perche'
+# il suo nome cambia da release a release (es. librtlsdr0 su bookworm/22.04,
+# librtlsdr2 su noble 24.04). La gestiamo a parte con una lista di candidati,
+# e comunque "librtlsdr-dev" e "rtl-sdr" tirano dietro la runtime corretta.
 APT_PACKAGES = [
     # Toolchain per compilare il codec vocale (e' codice C, non Python)
     "build-essential", "gcc", "make", "patch", "git", "wget", "unzip", "ca-certificates",
     # Ambiente Python: venv + header per eventuali estensioni C dei pacchetti pip
     "python3-venv", "python3-dev", "python3-pip",
-    # RTL-SDR: libreria nativa usata da pyrtlsdr + tool a riga di comando
+    # RTL-SDR: header di sviluppo + tool a riga di comando (rtl_test, ecc.)
     # + regole udev che permettono di usare la chiavetta senza sudo
-    "librtlsdr0", "librtlsdr-dev", "rtl-sdr",
+    "librtlsdr-dev", "rtl-sdr",
     "libusb-1.0-0", "libusb-1.0-0-dev",
     # PyQt6: librerie di sistema richieste dal plugin grafico "xcb" su
     # installazioni Ubuntu/Debian minime (senza queste la GUI non parte
@@ -111,6 +115,11 @@ APT_PACKAGES = [
     # sounddevice: libreria audio nativa (PortAudio)
     "libportaudio2",
 ]
+
+# Nome della libreria runtime RTL-SDR: proviamo i candidati in ordine e
+# usiamo il primo effettivamente disponibile nei repository della distro.
+# (piu' recente per primo)
+APT_RTLSDR_RUNTIME_CANDIDATES = ["librtlsdr2", "librtlsdr0"]
 
 REQUIRED_TOOLS = ("gcc", "make", "patch", "git")
 
@@ -385,6 +394,28 @@ def ensure_sudo() -> None:
         fail("Autenticazione sudo fallita: impossibile installare le dipendenze di sistema.")
 
 
+def _apt_package_available(pkg: str) -> bool:
+    """Ritorna True se il pacchetto esiste nei repository configurati.
+    Usiamo 'apt-cache show' (non richiede root): esce con codice 0 e
+    stampa qualcosa solo se il pacchetto e' davvero disponibile."""
+    result = run(["apt-cache", "show", pkg], check=False)
+    return result.returncode == 0 and bool(result.stdout.strip())
+
+
+def _resolve_rtlsdr_runtime_package() -> str | None:
+    """Trova il nome giusto della libreria runtime RTL-SDR per questa
+    distro (varia tra release), provando i candidati in ordine."""
+    for candidate in APT_RTLSDR_RUNTIME_CANDIDATES:
+        if _apt_package_available(candidate):
+            logger.info("Libreria runtime RTL-SDR trovata: %s", candidate)
+            return candidate
+    logger.info(
+        "Nessun pacchetto runtime RTL-SDR con nome noto trovato: verra' "
+        "comunque tirato dietro da 'librtlsdr-dev'/'rtl-sdr'."
+    )
+    return None
+
+
 def install_system_dependencies() -> None:
     step("Installazione dipendenze di sistema (apt)")
 
@@ -399,15 +430,46 @@ def install_system_dependencies() -> None:
     logger.info("Aggiorno l'elenco pacchetti (apt-get update)...")
     run(["apt-get", "update"], sudo=True)
 
-    logger.info("Installo %d pacchetti: %s", len(APT_PACKAGES), ", ".join(APT_PACKAGES))
-    run(["apt-get", "install", "-y"] + APT_PACKAGES, sudo=True)
+    # Costruiamo la lista definitiva: pacchetti base + la runtime RTL-SDR
+    # col nome corretto per questa distro.
+    wanted = list(APT_PACKAGES)
+    runtime_pkg = _resolve_rtlsdr_runtime_package()
+    if runtime_pkg:
+        wanted.append(runtime_pkg)
 
+    # Filtriamo tenendo solo i pacchetti realmente disponibili: cosi' una
+    # singola differenza di nome tra distro non fa fallire tutto il resto.
+    # I pacchetti mancanti vengono segnalati (e verificati piu' sotto per
+    # quelli davvero indispensabili).
+    available, skipped = [], []
+    for pkg in wanted:
+        (available if _apt_package_available(pkg) else skipped).append(pkg)
+
+    if skipped:
+        logger.warning(
+            "[ATTENZIONE] Pacchetti non presenti nei repository di questa "
+            "distribuzione, saltati: %s", ", ".join(skipped)
+        )
+
+    logger.info("Installo %d pacchetti: %s", len(available), ", ".join(available))
+    run(["apt-get", "install", "-y"] + available, sudo=True)
+
+    # Controllo degli strumenti davvero indispensabili (compilazione codec).
     missing_tools = [tool for tool in REQUIRED_TOOLS if shutil.which(tool) is None]
     if missing_tools:
         fail(
             "Anche dopo l'installazione mancano questi strumenti nel PATH: "
             + ", ".join(missing_tools)
         )
+
+    # Controllo "morbido" della libreria RTL-SDR: avvisa ma non blocca.
+    if ctypes.util.find_library("rtlsdr") is None:
+        logger.warning(
+            "[ATTENZIONE] La libreria librtlsdr non risulta ancora presente "
+            "nel sistema. Se all'avvio TetraEar non vede la chiavetta, "
+            "controlla che 'librtlsdr-dev' o 'rtl-sdr' siano stati installati."
+        )
+
     logger.info("[OK] Dipendenze di sistema installate correttamente")
 
 
