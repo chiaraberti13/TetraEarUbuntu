@@ -581,6 +581,10 @@ def _lowercase_filenames(directory: Path) -> None:
 
     Rinominiamo solo i file (non le cartelle): il Makefile referenzia i
     sorgenti in modo "piatto", nella stessa directory.
+
+    NOTA: su filesystem case-insensitive (utile per coerenza con l'installer
+    Windows) il percorso in minuscolo "esiste" perche' e' lo STESSO file: in
+    quel caso si rinomina in due passi, senza mai cancellare il file.
     """
     for path in directory.rglob("*"):
         if not path.is_file():
@@ -589,9 +593,17 @@ def _lowercase_filenames(directory: Path) -> None:
         if lower_name == path.name:
             continue
         target = path.parent / lower_name
-        if target.exists():
-            # Una versione minuscola esiste gia' (es. creata da una patch):
-            # teniamo quella e rimuoviamo il duplicato in maiuscolo.
+        try:
+            same_file = target.exists() and target.samefile(path)
+        except OSError:
+            same_file = False
+        if same_file:
+            # Filesystem case-insensitive: rinomina in due passi.
+            tmp = path.parent / (path.name + ".tetra-tmp")
+            path.rename(tmp)
+            tmp.rename(target)
+        elif target.exists():
+            # Collisione con un file realmente diverso: rimuovo il duplicato.
             path.unlink()
         else:
             path.rename(target)
