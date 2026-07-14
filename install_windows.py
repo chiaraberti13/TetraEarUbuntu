@@ -740,7 +740,11 @@ def install_windows_rtlsdr_dll() -> None:
 
     ucrt_bin = msys2_root / "ucrt64" / "bin"
     scripts_dir = VENV_DIR / "Scripts"
-    destinations = [d for d in (scripts_dir, TETRAEAR_ROOT) if d]
+    # Copiamo le DLL sia accanto a python.exe (venv Scripts, gia' nel percorso
+    # di ricerca DLL) sia dove l'app le cerca esplicitamente: capture.py su
+    # Windows aggiunge 'tetraear/bin' e 'tetraear/' con os.add_dll_directory().
+    pkg_dir = TETRAEAR_ROOT / "tetraear"
+    destinations = [scripts_dir, TETRAEAR_ROOT, pkg_dir, pkg_dir / "bin"]
 
     copied = []
     for dll in RTLSDR_DLL_NAMES:
