@@ -94,13 +94,23 @@ MSYS2_CANDIDATE_ROOTS = [
     Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "MSYS2",
 ]
 
-# Toolchain MinGW da installare dentro MSYS2 (fornisce gcc/make).
+# Toolchain MinGW da installare dentro MSYS2 (fornisce gcc/make/dos2unix).
 MSYS2_TOOLCHAIN_PACKAGES = [
     "base-devel",
     "mingw-w64-ucrt-x86_64-gcc",
     "make",
     "patch",
+    "dos2unix",
 ]
+
+# Pacchetto MSYS2 che fornisce la libreria RTL-SDR nativa per Windows
+# (rtlsdr.dll + libusb): serve a pyrtlsdr per essere importato, altrimenti
+# TetraEar non parte proprio ("cannot find rtlsdr.dll").
+MSYS2_RTLSDR_PACKAGE = "mingw-w64-ucrt-x86_64-rtl-sdr"
+
+# DLL da copiare accanto all'interprete Python del venv (dove ctypes le
+# trova) per far funzionare pyrtlsdr su Windows.
+RTLSDR_DLL_NAMES = ["librtlsdr.dll", "libusb-1.0.dll", "libwinpthread-1.dll"]
 
 # ============================================================
 # LOGGING
@@ -556,7 +566,13 @@ def _apply_osmo_tetra_patches(bash_exe: Path, codec_dir: Path, work_dir: Path) -
     cloned = False
     for repo_url in OSMO_TETRA_REPO_URLS:
         logger.info("Provo a scaricare le patch da %s ...", repo_url)
-        result = run([git_exe, "clone", "--depth", "1", repo_url, str(osmo_dir)], check=False)
+        # -c core.autocrlf=false: su Windows Git convertirebbe i file patch in
+        # CRLF, facendo fallire l'applicazione con "different line endings".
+        result = run(
+            [git_exe, "-c", "core.autocrlf=false", "-c", "core.eol=lf",
+             "clone", "--depth", "1", repo_url, str(osmo_dir)],
+            check=False,
+        )
         if result.returncode == 0:
             cloned = True
             break
@@ -574,6 +590,16 @@ def _apply_osmo_tetra_patches(bash_exe: Path, codec_dir: Path, work_dir: Path) -
     if not series_file.is_file():
         logger.warning("File 'series' delle patch non trovato, uso il metodo di riserva.")
         return False
+
+    # Doppia sicurezza: normalizziamo comunque i file .patch a LF, cosi' le
+    # fini riga combaciano con i sorgenti (anch'essi normalizzati a LF).
+    for pf in patch_dir.glob("*.patch"):
+        try:
+            raw = pf.read_bytes()
+            if b"\r\n" in raw:
+                pf.write_bytes(raw.replace(b"\r\n", b"\n"))
+        except OSError:
+            pass
 
     codec_msys = _to_msys_path(bash_exe, codec_dir)
     for patch_name in series_file.read_text(encoding="utf-8").splitlines():
@@ -689,6 +715,124 @@ def install_tetra_codec_with_fallback() -> None:
 
 
 # ============================================================
+# FASE 4c -- Libreria RTL-SDR nativa per Windows (rtlsdr.dll)
+# ============================================================
+
+def install_windows_rtlsdr_dll() -> None:
+    """
+    Su Windows pyrtlsdr carica 'rtlsdr.dll' via ctypes al momento
+    dell'import: se la DLL non c'e', TetraEar NON parte affatto (l'import
+    di 'rtlsdr' fallisce). Su Linux la libreria la fornisce apt; su Windows
+    dobbiamo fornirla noi. Installiamo il pacchetto rtl-sdr di MSYS2 e
+    copiamo le DLL accanto all'interprete Python del venv (la cartella di
+    python.exe fa parte del percorso di ricerca DLL di Windows).
+    """
+    step("Libreria RTL-SDR per Windows (rtlsdr.dll)")
+
+    bash_exe = _msys2_bash()
+    msys2_root = find_msys2_root()
+    if msys2_root is None:
+        logger.warning("[ATTENZIONE] MSYS2 non trovato: salto la copia di rtlsdr.dll.")
+        return
+
+    logger.info("Installo %s in MSYS2...", MSYS2_RTLSDR_PACKAGE)
+    run([str(bash_exe), "-lc", f"pacman -S --noconfirm --needed {MSYS2_RTLSDR_PACKAGE}"], check=False)
+
+    ucrt_bin = msys2_root / "ucrt64" / "bin"
+    scripts_dir = VENV_DIR / "Scripts"
+    destinations = [d for d in (scripts_dir, TETRAEAR_ROOT) if d]
+
+    copied = []
+    for dll in RTLSDR_DLL_NAMES:
+        src = ucrt_bin / dll
+        if not src.is_file():
+            logger.warning("[ATTENZIONE] DLL non trovata in MSYS2: %s", src)
+            continue
+        for dest in destinations:
+            try:
+                dest.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest / dll)
+            except OSError as exc:
+                logger.warning("[ATTENZIONE] Copia di %s in %s fallita: %s", dll, dest, exc)
+        copied.append(dll)
+
+    # pyrtlsdr cerca la libreria anche col nome 'rtlsdr.dll'.
+    librtlsdr = ucrt_bin / "librtlsdr.dll"
+    if librtlsdr.is_file():
+        for dest in destinations:
+            try:
+                shutil.copy2(librtlsdr, dest / "rtlsdr.dll")
+            except OSError:
+                pass
+
+    if copied:
+        logger.info("[OK] DLL RTL-SDR copiate (%s) in %s", ", ".join(copied), scripts_dir)
+    else:
+        logger.warning(
+            "[ATTENZIONE] Nessuna DLL RTL-SDR copiata: l'app potrebbe non "
+            "partire. Controlla che il pacchetto %s sia disponibile in MSYS2.",
+            MSYS2_RTLSDR_PACKAGE,
+        )
+
+
+def verify_pyrtlsdr_import() -> None:
+    """Controllo end-to-end: prova a importare 'rtlsdr' nel venv. E' qui che
+    si vede se la DLL rtlsdr.dll e' raggiungibile e l'app puo' partire."""
+    python_path = VENV_DIR / "Scripts" / "python.exe"
+    if not python_path.is_file():
+        return
+    result = run([str(python_path), "-c", "from rtlsdr import RtlSdr"], check=False)
+    if result.returncode == 0:
+        logger.info("[OK] Il modulo Python 'rtlsdr' (pyrtlsdr) si importa correttamente.")
+    else:
+        logger.warning(
+            "[ATTENZIONE] Import di 'rtlsdr' fallito: rtlsdr.dll potrebbe non "
+            "essere raggiungibile. L'app potrebbe non partire. Dettaglio:\n%s",
+            result.stderr.strip(),
+        )
+
+
+# ============================================================
+# FASE 4d -- Launcher senza terminale (doppio clic)
+# ============================================================
+
+def create_launchers() -> None:
+    """
+    Crea un launcher avviabile con doppio clic, SENZA finestra del
+    terminale: un file .vbs che lancia pythonw.exe (interprete Python senza
+    console) con il modulo tetraear. Lo mette nella cartella di TetraEar e,
+    se possibile, ne copia una scorciatoia sul Desktop.
+    """
+    step("Creazione launcher senza terminale (doppio clic)")
+
+    pythonw = VENV_DIR / "Scripts" / "pythonw.exe"
+    python_exe = VENV_DIR / "Scripts" / "python.exe"
+    interp = pythonw if pythonw.is_file() else python_exe
+
+    vbs_path = TETRAEAR_ROOT / "Avvia TetraEar.vbs"
+    vbs = (
+        'Set sh = CreateObject("WScript.Shell")\r\n'
+        f'sh.CurrentDirectory = "{TETRAEAR_ROOT}"\r\n'
+        f'sh.Run """{interp}"" -m tetraear -f 392.225", 0, False\r\n'
+    )
+    try:
+        vbs_path.write_text(vbs, encoding="utf-8")
+        logger.info("[OK] Launcher creato: %s (doppio clic per avviare)", vbs_path)
+    except OSError as exc:
+        logger.warning("[ATTENZIONE] Non sono riuscito a creare il launcher: %s", exc)
+        return
+
+    # Copia sul Desktop, se raggiungibile (best effort).
+    desktop = Path(os.environ.get("USERPROFILE", "")) / "Desktop"
+    if desktop.is_dir():
+        try:
+            shutil.copy2(vbs_path, desktop / "Avvia TetraEar.vbs")
+            logger.info("[OK] Copia del launcher sul Desktop: %s", desktop / "Avvia TetraEar.vbs")
+        except OSError:
+            pass
+
+
+# ============================================================
 # FASE 5 -- Verifica finale
 # ============================================================
 
@@ -712,7 +856,14 @@ def verify_installation() -> None:
             logger.error("[FALLITO] Binario codec mancante: %s", binary_path)
             all_ok = False
 
-    warn_about_rtl_sdr_on_windows()  # solo informativo
+    dll_path = VENV_DIR / "Scripts" / "rtlsdr.dll"
+    if dll_path.is_file():
+        logger.info("[OK] rtlsdr.dll presente: %s", dll_path)
+    else:
+        logger.warning("[ATTENZIONE] rtlsdr.dll non trovata in %s", dll_path)
+
+    verify_pyrtlsdr_import()          # verifica che l'app possa partire
+    warn_about_rtl_sdr_on_windows()  # solo informativo (driver Zadig)
 
     if not all_ok:
         fail("Uno o piu' controlli finali non sono andati a buon fine (vedi sopra).")
@@ -721,7 +872,10 @@ def verify_installation() -> None:
     logger.info("========================================================")
     logger.info(" Installazione completata con successo!")
     logger.info("")
-    logger.info(" Per avviare TetraEar (Prompt dei comandi):")
+    logger.info(" Per avviare TetraEar SENZA terminale:")
+    logger.info("   doppio clic su 'Avvia TetraEar.vbs' (nella cartella TetraEar o sul Desktop)")
+    logger.info("")
+    logger.info(" Oppure da Prompt dei comandi:")
     logger.info("   cd %s", TETRAEAR_ROOT)
     logger.info(r"   .venv\Scripts\activate")
     logger.info("   python -m tetraear -f 392.225")
@@ -729,14 +883,13 @@ def verify_installation() -> None:
 
 
 def warn_about_rtl_sdr_on_windows() -> None:
-    """Su Windows il supporto RTL-SDR richiede driver WinUSB (Zadig) e
-    rtlsdr.dll: passaggi semi-manuali. Ricordiamo all'utente di leggerli
-    nella guida, senza bloccare l'installazione."""
+    """La libreria rtlsdr.dll ora la installa l'installer. Resta manuale solo
+    il driver WinUSB (Zadig), che Windows richiede per accedere al dongle."""
     logger.info("")
     logger.warning(
-        "[IMPORTANTE] Prima di usare la chiavetta RTL-SDR su Windows devi:\n"
-        "  1) installare il driver WinUSB con Zadig (https://zadig.akeo.ie/);\n"
-        "  2) avere rtlsdr.dll raggiungibile nel PATH.\n"
+        "[IMPORTANTE] rtlsdr.dll e' stata installata automaticamente. Per USARE "
+        "la chiavetta resta un solo passaggio manuale:\n"
+        "  installare il driver WinUSB con Zadig (https://zadig.akeo.ie/).\n"
         "  Vedi la sezione 'RTL-SDR su Windows' in README.md."
     )
 
@@ -746,11 +899,13 @@ def warn_about_rtl_sdr_on_windows() -> None:
 # ============================================================
 
 def do_repair() -> None:
-    step("Modalita' --repair: ricompilo il codec vocale e sistemo la compatibilita' pyrtlsdr")
+    step("Modalita' --repair: ricompilo il codec, sistemo pyrtlsdr e rtlsdr.dll")
     ensure_tetraear_source(clone_if_missing=True)
     patch_pyrtlsdr_dithering()
     ensure_msys2_toolchain()
+    install_windows_rtlsdr_dll()
     install_tetra_codec_with_fallback()
+    create_launchers()
     verify_installation()
 
 
@@ -814,7 +969,9 @@ def main() -> int:
         install_system_dependencies()
         ensure_tetraear_source(clone_if_missing=True)
         create_virtualenv_and_install_requirements()
+        install_windows_rtlsdr_dll()
         install_tetra_codec_with_fallback()
+        create_launchers()
         verify_installation()
         return 0
 
