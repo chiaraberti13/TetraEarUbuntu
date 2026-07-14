@@ -100,6 +100,10 @@ python -m tetraear --no-gui -f 392.225 --auto-start
 
 (replace `392.225` with the frequency in MHz you want).
 
+**Without a terminal:** the installer also creates a **TetraEar** entry in
+your applications menu and a **`TetraEar.desktop`** icon on the Desktop —
+double-click to launch, no terminal needed.
+
 **Restart the app (after logout or reboot)** — just three lines:
 
 ```bash
@@ -200,22 +204,24 @@ ZIP**, extract it and open the folder. Either way you need
   creates the environment, installs the Python packages and compiles the
   codec.
 
-**3. RTL-SDR on Windows (a one-time semi-manual step)**
+**3. RTL-SDR on Windows (a one-time step)**
 
-Unlike Linux, on Windows the dongle needs two manual steps, **once**:
+`rtlsdr.dll` (plus `libusb`) is **installed automatically** by the installer —
+you no longer need to download it by hand. Only the driver is manual, **once**:
 
-1. **WinUSB driver with Zadig** — download [Zadig](https://zadig.akeo.ie/),
-   plug in the dongle, then *Options → List All Devices*, select
-   **"Bulk-In, Interface (Interface 0)"** (or "RTL2832U"), choose the
-   **WinUSB** driver and press *Replace Driver*.
-2. **`rtlsdr.dll`** — download the Windows binaries of `librtlsdr` (e.g. from
-   the [librtlsdr releases](https://github.com/librtlsdr/librtlsdr/releases))
-   and copy `rtlsdr.dll` (plus the bundled `libusb` DLLs) into the `TetraEar`
-   folder created by the installer, or into a folder on your `PATH`.
+- **WinUSB driver with Zadig** — download [Zadig](https://zadig.akeo.ie/),
+  plug in the dongle, then *Options → List All Devices*, select
+  **"Bulk-In, Interface (Interface 0)"** (or "RTL2832U"), choose the
+  **WinUSB** driver and press *Replace Driver*.
 
 **4. Run TetraEar**
 
-Open the **Command Prompt** in the `TetraEar` folder created by the installer:
+**Without a terminal:** double-click **`Avvia TetraEar.vbs`** — the installer
+creates it inside the `TetraEar` folder and copies it to your **Desktop**. It
+launches the app with no console window.
+
+Or from the **Command Prompt**, in the `TetraEar` folder created by the
+installer:
 
 ```bat
 cd TetraEar
@@ -343,6 +349,10 @@ python -m tetraear --no-gui -f 392.225 --auto-start
 
 (sostituisci `392.225` con la frequenza in MHz che ti interessa).
 
+**Senza terminale:** l'installer crea anche una voce **TetraEar** nel menu
+applicazioni e un'icona **`TetraEar.desktop`** sul Desktop — doppio clic per
+avviare, senza terminale.
+
 **Riavviare l'app (dopo logout o riavvio)** — bastano tre righe:
 
 ```bash
@@ -446,23 +456,24 @@ servono `install_windows.bat` e `install_windows.py` nella stessa cartella.
   (il compilatore C per il codec), scarica TetraEar, crea l'ambiente,
   installa i pacchetti Python e compila il codec.
 
-**3. RTL-SDR su Windows (passaggio semi-manuale, una volta sola)**
+**3. RTL-SDR su Windows (un passaggio, una volta sola)**
 
-A differenza di Linux, su Windows la chiavetta richiede due passaggi manuali,
-**una volta sola**:
+`rtlsdr.dll` (con `libusb`) viene **installata automaticamente** dall'installer:
+non devi più scaricarla a mano. Resta manuale solo il driver, **una volta sola**:
 
-1. **Driver WinUSB con Zadig** — scarica [Zadig](https://zadig.akeo.ie/),
-   collega la chiavetta, poi *Options → List All Devices*, seleziona
-   **"Bulk-In, Interface (Interface 0)"** (o "RTL2832U"), scegli il driver
-   **WinUSB** e premi *Replace Driver*.
-2. **`rtlsdr.dll`** — scarica i binari Windows di `librtlsdr` (es. dai
-   [rilasci di librtlsdr](https://github.com/librtlsdr/librtlsdr/releases)) e
-   copia `rtlsdr.dll` (con le DLL di `libusb` incluse) nella cartella
-   `TetraEar` creata dall'installer, o in una cartella nel `PATH`.
+- **Driver WinUSB con Zadig** — scarica [Zadig](https://zadig.akeo.ie/),
+  collega la chiavetta, poi *Options → List All Devices*, seleziona
+  **"Bulk-In, Interface (Interface 0)"** (o "RTL2832U"), scegli il driver
+  **WinUSB** e premi *Replace Driver*.
 
 **4. Avvia TetraEar**
 
-Apri il **Prompt dei comandi** nella cartella `TetraEar` creata dall'installer:
+**Senza terminale:** fai doppio clic su **`Avvia TetraEar.vbs`** — l'installer
+lo crea nella cartella `TetraEar` e ne mette una copia sul **Desktop**. Avvia
+l'app senza finestra del terminale.
+
+Oppure dal **Prompt dei comandi**, nella cartella `TetraEar` creata
+dall'installer:
 
 ```bat
 cd TetraEar
