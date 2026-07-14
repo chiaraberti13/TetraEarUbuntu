@@ -947,6 +947,74 @@ def patch_pyrtlsdr_dithering() -> None:
 
 
 # ============================================================
+# FASE 4d -- Launcher senza terminale (icona / doppio clic)
+# ============================================================
+
+def create_launchers() -> None:
+    """
+    Crea un file .desktop per avviare TetraEar dal menu applicazioni o con
+    doppio clic sull'icona (senza aprire un terminale). Ne mette una copia
+    nel menu applicazioni e, se presente, sul Desktop.
+    """
+    step("Creazione launcher senza terminale (icona / doppio clic)")
+
+    py = VENV_DIR / "bin" / "python"
+    if not py.is_file():
+        logger.info("[INFO] venv non pronto, salto la creazione dei launcher.")
+        return
+
+    icon_line = ""
+    banner = INSTALLER_DIR / "assets" / "banner.svg"
+    if banner.is_file():
+        icon_line = f"Icon={banner}\n"
+
+    content = (
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Version=1.0\n"
+        "Name=TetraEar\n"
+        "Comment=Decoder TETRA per RTL-SDR / TETRA decoder for RTL-SDR\n"
+        f"Exec={py} -m tetraear -f 392.225\n"
+        f"Path={TETRAEAR_ROOT}\n"
+        "Terminal=false\n"
+        + icon_line
+        + "Categories=HamRadio;Utility;\n"
+    )
+
+    desktop_file = TETRAEAR_ROOT / "TetraEar.desktop"
+    try:
+        desktop_file.write_text(content, encoding="utf-8")
+        desktop_file.chmod(0o755)
+        logger.info("[OK] Launcher creato: %s", desktop_file)
+    except OSError as exc:
+        logger.warning("[ATTENZIONE] Non sono riuscito a creare il launcher: %s", exc)
+        return
+
+    real_user = os.environ.get("SUDO_USER") or os.environ.get("USER") or ""
+    home = Path(os.path.expanduser("~" + real_user)) if real_user else Path.home()
+    targets = [
+        home / ".local" / "share" / "applications",
+        home / "Desktop",
+        home / "Scrivania",  # nome della cartella Desktop in italiano
+    ]
+    for target_dir in targets:
+        # Il menu applicazioni lo creiamo sempre; le cartelle Desktop solo se esistono.
+        if target_dir.name != "applications" and not target_dir.is_dir():
+            continue
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            dst = target_dir / "TetraEar.desktop"
+            shutil.copy2(desktop_file, dst)
+            dst.chmod(0o755)
+            if shutil.which("gio"):  # marca l'icona come "attendibile" su GNOME
+                run(["gio", "set", str(dst), "metadata::trusted", "true"], check=False)
+        except OSError:
+            pass
+
+    logger.info("Puoi avviare TetraEar dal menu applicazioni o dall'icona sul Desktop.")
+
+
+# ============================================================
 # FASE 5 -- Verifica finale
 # ============================================================
 
@@ -1050,6 +1118,7 @@ def do_repair() -> None:
     ensure_tetraear_source(clone_if_missing=True)
     patch_pyrtlsdr_dithering()
     install_tetra_codec_with_fallback()
+    create_launchers()
     verify_installation()
 
 
@@ -1119,6 +1188,7 @@ def main() -> int:
         # fallire, ma il dongle dev'essere comunque pronto all'uso.
         configure_rtl_sdr()
         install_tetra_codec_with_fallback()
+        create_launchers()
         verify_installation()
         return 0
 
