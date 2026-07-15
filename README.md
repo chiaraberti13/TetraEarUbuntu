@@ -235,7 +235,7 @@ python -m tetraear -f 392.225
 | --- | --- |
 | double-click `install_windows.bat` | Full installation |
 | `python install_windows.py --repair` | Recompile only the voice codec + re-apply fixes |
-| `python install_windows.py --uninstall` | Remove `.venv` and the codec |
+| `python install_windows.py --uninstall` | Remove `.venv` and the codec (keeps the source) |
 
 **6. Troubleshooting (Windows)**
 
@@ -486,8 +486,8 @@ python -m tetraear -f 392.225
 | Comando | Cosa fa |
 | --- | --- |
 | doppio clic su `install_windows.bat` | Installazione completa |
-| `python install_windows.py --repair` | Ricompila solo il codec + riapplica le correzioni |
-| `python install_windows.py --uninstall` | Rimuove `.venv` e il codec |
+| `python install_windows.py --repair` | Ricompila solo il codec vocale + riapplica le correzioni |
+| `python install_windows.py --uninstall` | Rimuove `.venv` e il codec (lascia il sorgente) |
 
 **6. Problemi comuni (Windows)**
 

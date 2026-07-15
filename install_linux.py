@@ -354,7 +354,7 @@ def warn_if_in_trash() -> None:
         logger.warning("")
         logger.warning("[ATTENZIONE] Stai eseguendo l'installer da dentro il CESTINO:")
         logger.warning("  %s", INSTALLER_DIR)
-        logger.warning("Sposta la cartella nella tua home (o reinstalla lì) prima di usarla:")
+        logger.warning("Sposta la cartella nella tua home (o reinstalla li') prima di usarla:")
         logger.warning("  cd ~ && git clone https://github.com/chiaraberti13/TetraEarUbuntu.git")
         logger.warning("  cd ~/TetraEarUbuntu && python3 install_linux.py")
         logger.warning("")
@@ -628,7 +628,7 @@ def _normalize_line_endings(root: Path) -> None:
     """L'archivio ETSI ha alcuni file con fine riga Windows (CRLF); li
     normalizziamo a LF per evitare problemi con patch/make su Linux."""
     for path in root.rglob("*"):
-        if path.is_file() and path.suffix.lower() in (".c", ".h") or path.name.lower() == "makefile":
+        if path.is_file() and (path.suffix.lower() in (".c", ".h") or path.name.lower() == "makefile"):
             try:
                 raw = path.read_bytes()
                 if b"\r\n" in raw:
@@ -974,7 +974,7 @@ def create_launchers() -> None:
         "Version=1.0\n"
         "Name=TetraEar\n"
         "Comment=Decoder TETRA per RTL-SDR / TETRA decoder for RTL-SDR\n"
-        f"Exec={py} -m tetraear -f 392.225\n"
+        f'Exec="{py}" -m tetraear -f 392.225\n'
         f"Path={TETRAEAR_ROOT}\n"
         "Terminal=false\n"
         + icon_line
@@ -1090,7 +1090,7 @@ def check_rtl_sdr_dongle() -> None:
     if ctypes.util.find_library("rtlsdr") is None:
         logger.warning(
             "[INFO] Libreria librtlsdr non trovata nel sistema: "
-            "verrà rilevata solo quando colleghi una chiavetta e la usi."
+            "verra' rilevata solo quando colleghi una chiavetta e la usi."
         )
 
     if shutil.which("lsusb") is None:
@@ -1138,7 +1138,7 @@ def do_uninstall() -> None:
     else:
         logger.info("Nessun binario del codec da rimuovere")
 
-    logger.info("[OK] Disinstallazione completata (il codice sorgente non è stato toccato)")
+    logger.info("[OK] Disinstallazione completata (il codice sorgente non e' stato toccato)")
 
 
 # ============================================================
