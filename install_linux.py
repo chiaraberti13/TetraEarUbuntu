@@ -970,12 +970,46 @@ def create_launchers() -> None:
     Crea un file .desktop per avviare TetraEar dal menu applicazioni o con
     doppio clic sull'icona (senza aprire un terminale). Ne mette una copia
     nel menu applicazioni e, se presente, sul Desktop.
+
+    Il .desktop non lancia direttamente python: punta a uno script di avvio
+    (run_tetraear.sh) generato accanto all'app. Cosi' anche il doppio clic
+    avvia la cattura (--auto-start) con log dettagliato (-v) e salva tutto
+    in TetraEar/logs/, incluso un console_*.log che cattura eventuali errori
+    di avvio (es. chiavetta non vista) che con Terminal=false andrebbero
+    altrimenti persi.
     """
     step("Creazione launcher senza terminale (icona / doppio clic)")
 
     py = VENV_DIR / "bin" / "python"
     if not py.is_file():
         logger.info("[INFO] venv non pronto, salto la creazione dei launcher.")
+        return
+
+    # Script di avvio dedicato: attiva il venv, avvia con --auto-start + -v e
+    # redirige l'output di console in un file (con Terminal=false stdout/stderr
+    # verrebbero altrimenti scartati). I log di decodifica (codec_*.log, ...)
+    # li scrive comunque l'app dentro logs/, relativi a questa cartella.
+    run_script = TETRAEAR_ROOT / "run_tetraear.sh"
+    run_script_content = (
+        "#!/usr/bin/env bash\n"
+        "# Avvia TetraEar con cattura automatica e logging completo.\n"
+        "# Generato da install_linux.py: usato dal launcher .desktop\n"
+        "# (doppio clic) perche' anche cosi' vengano prodotti i log.\n"
+        f'cd "{TETRAEAR_ROOT}" || exit 1\n'
+        'mkdir -p logs\n'
+        'STAMP="$(date +%Y%m%d_%H%M%S)"\n'
+        '# shellcheck disable=SC1091\n'
+        'source .venv/bin/activate\n'
+        'FREQ="${1:-392.225}"\n'
+        'exec python -m tetraear -f "$FREQ" -v --auto-start '
+        '>> "logs/console_${STAMP}.log" 2>&1\n'
+    )
+    try:
+        run_script.write_text(run_script_content, encoding="utf-8")
+        run_script.chmod(0o755)
+        logger.info("[OK] Script di avvio creato: %s", run_script)
+    except OSError as exc:
+        logger.warning("[ATTENZIONE] Non sono riuscito a creare lo script di avvio: %s", exc)
         return
 
     icon_line = ""
@@ -989,7 +1023,7 @@ def create_launchers() -> None:
         "Version=1.0\n"
         "Name=TetraEar\n"
         "Comment=Decoder TETRA per RTL-SDR / TETRA decoder for RTL-SDR\n"
-        f'Exec="{py}" -m tetraear -f 392.225\n'
+        f'Exec=/bin/bash "{run_script}"\n'
         f"Path={TETRAEAR_ROOT}\n"
         "Terminal=false\n"
         + icon_line
