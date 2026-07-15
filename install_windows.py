@@ -160,12 +160,17 @@ def run(
     codice di uscita e l'intero stderr. Nessun shell=True."""
     logger.debug("Eseguo comando: %s (cwd=%s)", " ".join(cmd), cwd or INSTALLER_DIR)
     try:
+        # encoding esplicito: pacman/git emettono UTF-8, ma su Windows il
+        # default sarebbe la codepage di sistema (cp1252) e il log si
+        # riempirebbe di caratteri corrotti ("Ã¨" al posto di "e'").
         result = subprocess.run(
             cmd,
             cwd=str(cwd) if cwd else None,
             env=env,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
     except FileNotFoundError as exc:
         fail(f"Comando non trovato: {cmd[0]} ({exc})")
@@ -619,6 +624,16 @@ def _apply_osmo_tetra_patches(bash_exe: Path, codec_dir: Path, work_dir: Path) -
         if result.returncode not in (0, 1):  # 1 = gia' applicata
             logger.error("Applicazione patch fallita: %s\n%s", patch_name, result.stderr)
             fail(f"Patch fallita: {patch_name}")
+        # Con exit code 1 'patch' segnala anche gli hunk NON applicati:
+        # non blocchiamo (il codec compila comunque), ma deve restare
+        # traccia CHIARA nel log, non un finto successo.
+        if result.returncode == 1 and "FAILED" in (result.stdout + result.stderr):
+            logger.warning(
+                "[ATTENZIONE] Alcune parti della patch %s NON sono state "
+                "applicate (vedi dettagli sopra nel log). Il codec verra' "
+                "compilato comunque, ma la decodifica potrebbe risentirne.",
+                patch_name,
+            )
 
     return True
 
