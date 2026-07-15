@@ -687,9 +687,24 @@ def _apply_osmo_tetra_patches(codec_dir: Path, work_dir: Path) -> bool:
                 capture_output=True,
                 text=True,
             )
+        logger.debug("Codice di uscita patch %s: %s", patch_name, result.returncode)
+        if result.stdout:
+            logger.debug("--- stdout ---\n%s", result.stdout.strip())
+        if result.stderr:
+            logger.debug("--- stderr ---\n%s", result.stderr.strip())
         if result.returncode not in (0, 1):  # 1 = "gia' applicata", non fatale
             logger.error("Applicazione patch fallita: %s\n%s", patch_name, result.stderr)
             fail(f"Patch fallita: {patch_name}")
+        # Con exit code 1 'patch' segnala anche gli hunk NON applicati:
+        # non blocchiamo (il codec compila comunque), ma deve restare
+        # traccia CHIARA nel log, non un finto successo.
+        if result.returncode == 1 and "FAILED" in (result.stdout + result.stderr):
+            logger.warning(
+                "[ATTENZIONE] Alcune parti della patch %s NON sono state "
+                "applicate (vedi dettagli in install.log). Il codec verra' "
+                "compilato comunque, ma la decodifica potrebbe risentirne.",
+                patch_name,
+            )
 
     return True
 
