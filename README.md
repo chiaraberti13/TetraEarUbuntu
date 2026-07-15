@@ -102,7 +102,10 @@ python -m tetraear --no-gui -f 392.225 --auto-start
 
 **Without a terminal:** the installer also creates a **TetraEar** entry in
 your applications menu and a **`TetraEar.desktop`** icon on the Desktop —
-double-click to launch, no terminal needed.
+double-click to launch, no terminal needed. The icon starts capture
+automatically with verbose logging, so it writes the same
+`TetraEar/logs/` files (plus a `console_*.log`) as the command line — handy
+if voice doesn't decode and you need to send the logs.
 
 **Restart the app (after logout or reboot)** — just three lines:
 
@@ -351,7 +354,10 @@ python -m tetraear --no-gui -f 392.225 --auto-start
 
 **Senza terminale:** l'installer crea anche una voce **TetraEar** nel menu
 applicazioni e un'icona **`TetraEar.desktop`** sul Desktop — doppio clic per
-avviare, senza terminale.
+avviare, senza terminale. L'icona avvia già la cattura in automatico con log
+dettagliato, quindi scrive gli stessi file in `TetraEar/logs/` (più un
+`console_*.log`) del comando da terminale — comodo se la voce non si
+decodifica e devi inviare i log.
 
 **Riavviare l'app (dopo logout o riavvio)** — bastano tre righe:
 
