@@ -523,7 +523,7 @@ def _normalize_line_endings(root: Path) -> None:
     a LF, altrimenti le patch osmocom falliscono con
     'Hunk FAILED (different line endings)'."""
     for path in root.rglob("*"):
-        if path.is_file() and path.suffix.lower() in (".c", ".h") or path.name.lower() == "makefile":
+        if path.is_file() and (path.suffix.lower() in (".c", ".h") or path.name.lower() == "makefile"):
             try:
                 raw = path.read_bytes()
                 if b"\r\n" in raw:
