@@ -424,27 +424,58 @@ def _apt_package_available(pkg: str) -> bool:
 APT_LOCK_TIMEOUT = 600  # 10 minuti
 
 
-def _run_apt(args: list) -> subprocess.CompletedProcess:
+def _run_apt(args: list) -> None:
     """
     Esegue 'apt-get <args>' con sudo facendogli ATTENDERE il lock di
     dpkg/apt invece di fallire subito se un altro processo lo sta usando.
 
-    Usiamo l'opzione nativa DPkg::Lock::Timeout: se il lock e' occupato
-    (tipicamente da 'unattended-upgrades' appena dopo il boot) apt aspetta
-    fino a APT_LOCK_TIMEOUT secondi che si liberi. Se anche cosi' non ci
-    riesce, spieghiamo il perche' in modo chiaro invece di mostrare il
-    criptico "Could not get lock".
+    Due accorgimenti importanti:
+
+    1. Usiamo l'opzione nativa DPkg::Lock::Timeout: se il lock e' occupato
+       (tipicamente da 'unattended-upgrades' appena dopo il boot) apt aspetta
+       fino a APT_LOCK_TIMEOUT secondi che si liberi, invece del criptico
+       "Could not get lock".
+
+    2. A differenza degli altri comandi, qui NON catturiamo l'output ma lo
+       lasciamo scorrere a schermo (e lo salviamo nel log riga per riga).
+       Cosi' l'utente vede il download dei pacchetti e soprattutto il
+       messaggio "Waiting for cache lock..." di apt mentre attende: altrimenti
+       l'installer sembrerebbe "bloccato" durante l'attesa del lock o durante
+       un'installazione lunga.
     """
     cmd = ["apt-get", "-o", f"DPkg::Lock::Timeout={APT_LOCK_TIMEOUT}"] + args
-    result = run(cmd, sudo=True, check=False)
-    if result.returncode == 0:
-        return result
+    if os.geteuid() != 0:
+        cmd = ["sudo"] + cmd
 
-    stderr = result.stderr or ""
+    logger.debug("Eseguo comando (streaming): %s", " ".join(cmd))
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except FileNotFoundError as exc:
+        fail(f"Comando non trovato: {cmd[0]} ({exc})")
+
+    captured = []
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        line = line.rstrip("\n")
+        captured.append(line)
+        logger.info(line)  # console (immediato) + file di log
+    returncode = proc.wait()
+    logger.debug("Codice di uscita: %s", returncode)
+
+    if returncode == 0:
+        return
+
+    output = "\n".join(captured)
     lock_busy = (
-        "Could not get lock" in stderr
-        or "frontend lock" in stderr
-        or "is another process using it" in stderr
+        "Could not get lock" in output
+        or "frontend lock" in output
+        or "is another process using it" in output
     )
     if lock_busy:
         fail(
@@ -457,12 +488,8 @@ def _run_apt(args: list) -> subprocess.CompletedProcess:
             "'ps aux | grep -i unattended'."
         )
 
-    # Errore diverso dal lock: registra lo stderr completo e termina, come
-    # avrebbe fatto run(check=True).
-    if stderr.strip():
-        logger.error("--- Messaggio di errore completo ---\n%s", stderr.strip())
+    # Errore diverso dal lock: l'output e' gia' a schermo e nel log, terminiamo.
     fail(f"Comando fallito: {' '.join(cmd)}")
-    return result  # non raggiunto (fail solleva), ma esplicita il tipo di ritorno
 
 
 def _resolve_rtlsdr_runtime_package() -> str | None:
@@ -515,6 +542,11 @@ def install_system_dependencies() -> None:
         )
 
     logger.info("Installo %d pacchetti: %s", len(available), ", ".join(available))
+    logger.info(
+        "(puo' richiedere qualche minuto; se poco dopo l'avvio vedi "
+        "'Waiting for cache lock' e' NORMALE: aspetta, sono gli aggiornamenti "
+        "automatici di Ubuntu che rilasciano il lock)"
+    )
     _run_apt(["install", "-y"] + available)
 
     # Controllo degli strumenti davvero indispensabili (compilazione codec).
