@@ -417,6 +417,54 @@ def _apt_package_available(pkg: str) -> bool:
     return result.returncode == 0 and bool(result.stdout.strip())
 
 
+# Quanti secondi far attendere ad apt il lock di dpkg prima di arrendersi.
+# Subito dopo l'avvio 'unattended-upgrades' (gli aggiornamenti automatici di
+# Ubuntu) tiene spesso occupato /var/lib/dpkg/lock-frontend per un paio di
+# minuti: senza attendere, apt fallirebbe con "Could not get lock".
+APT_LOCK_TIMEOUT = 600  # 10 minuti
+
+
+def _run_apt(args: list) -> subprocess.CompletedProcess:
+    """
+    Esegue 'apt-get <args>' con sudo facendogli ATTENDERE il lock di
+    dpkg/apt invece di fallire subito se un altro processo lo sta usando.
+
+    Usiamo l'opzione nativa DPkg::Lock::Timeout: se il lock e' occupato
+    (tipicamente da 'unattended-upgrades' appena dopo il boot) apt aspetta
+    fino a APT_LOCK_TIMEOUT secondi che si liberi. Se anche cosi' non ci
+    riesce, spieghiamo il perche' in modo chiaro invece di mostrare il
+    criptico "Could not get lock".
+    """
+    cmd = ["apt-get", "-o", f"DPkg::Lock::Timeout={APT_LOCK_TIMEOUT}"] + args
+    result = run(cmd, sudo=True, check=False)
+    if result.returncode == 0:
+        return result
+
+    stderr = result.stderr or ""
+    lock_busy = (
+        "Could not get lock" in stderr
+        or "frontend lock" in stderr
+        or "is another process using it" in stderr
+    )
+    if lock_busy:
+        fail(
+            "Il gestore pacchetti (dpkg/apt) e' rimasto occupato da un altro "
+            f"processo per oltre {APT_LOCK_TIMEOUT // 60} minuti: quasi sempre "
+            "sono gli aggiornamenti automatici di Ubuntu "
+            "('unattended-upgrades'), che partono da soli subito dopo l'avvio. "
+            "Aspetta 2-3 minuti che finiscano e rilancia "
+            "'python3 install_linux.py'. Per vedere se sono in corso: "
+            "'ps aux | grep -i unattended'."
+        )
+
+    # Errore diverso dal lock: registra lo stderr completo e termina, come
+    # avrebbe fatto run(check=True).
+    if stderr.strip():
+        logger.error("--- Messaggio di errore completo ---\n%s", stderr.strip())
+    fail(f"Comando fallito: {' '.join(cmd)}")
+    return result  # non raggiunto (fail solleva), ma esplicita il tipo di ritorno
+
+
 def _resolve_rtlsdr_runtime_package() -> str | None:
     """Trova il nome giusto della libreria runtime RTL-SDR per questa
     distro (varia tra release), provando i candidati in ordine."""
@@ -443,7 +491,7 @@ def install_system_dependencies() -> None:
         )
 
     logger.info("Aggiorno l'elenco pacchetti (apt-get update)...")
-    run(["apt-get", "update"], sudo=True)
+    _run_apt(["update"])
 
     # Costruiamo la lista definitiva: pacchetti base + la runtime RTL-SDR
     # col nome corretto per questa distro.
@@ -467,7 +515,7 @@ def install_system_dependencies() -> None:
         )
 
     logger.info("Installo %d pacchetti: %s", len(available), ", ".join(available))
-    run(["apt-get", "install", "-y"] + available, sudo=True)
+    _run_apt(["install", "-y"] + available)
 
     # Controllo degli strumenti davvero indispensabili (compilazione codec).
     missing_tools = [tool for tool in REQUIRED_TOOLS if shutil.which(tool) is None]

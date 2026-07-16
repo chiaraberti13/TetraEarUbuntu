@@ -157,6 +157,11 @@ through — the `avvia_tetraear.sh` script does exactly this.
 
 **5. Troubleshooting (Linux)**
 
+- **`Could not get lock /var/lib/dpkg/lock-frontend` (held by
+  `unattended-upgr`)**: Ubuntu's automatic updates run right after boot and
+  hold the package lock. The installer now waits for it automatically; if it
+  ever gives up, wait 2–3 minutes for the updates to finish and re-run
+  `python3 install_linux.py`.
 - **GUI won't start, "could not load the Qt platform plugin xcb"**: the
   installer already installs the required Qt libraries; make sure you are in
   a graphical session (not headless SSH).
@@ -419,6 +424,11 @@ esce — lo script `avvia_tetraear.sh` fa esattamente questo.
 
 **5. Problemi comuni (Linux)**
 
+- **`Could not get lock /var/lib/dpkg/lock-frontend` (occupato da
+  `unattended-upgr`)**: gli aggiornamenti automatici di Ubuntu partono subito
+  dopo l'avvio e tengono occupato il lock dei pacchetti. L'installer ora
+  attende in automatico; se dovesse arrendersi, aspetta 2-3 minuti che gli
+  aggiornamenti finiscano e rilancia `python3 install_linux.py`.
 - **La GUI non parte, "could not load the Qt platform plugin xcb"**:
   l'installer installa già le librerie Qt necessarie; assicurati di essere in
   una sessione grafica (non SSH senza display).
