@@ -500,6 +500,72 @@ def patch_tetraear_source_bugs() -> None:
     )
 
 
+def patch_voice_hide_codec_window() -> None:
+    """
+    Evita che ad OGNI frame decodificato si apra una finestra nera del codec.
+
+    Il launcher di TetraEar usa 'pythonw.exe' (nessuna console). In
+    tetraear/audio/voice.py, per ogni frame vocale, 'decode_frame()' lancia
+    due processi console (cdecoder.exe e sdecoder.exe) con subprocess.run().
+    Poiche' il processo padre (pythonw) non ha una console, Windows ne crea
+    una NUOVA e VISIBILE per ciascuna chiamata: il risultato e' uno sfarfallio
+    continuo di finestrelle che si aprono e chiudono (il sintomo "apre tante
+    cartelle/finestre ad ogni decodifica").
+
+    La correzione aggiunge 'creationflags=CREATE_NO_WINDOW' alle chiamate
+    subprocess.run() del codec, cosi' i processi girano nascosti. Usiamo
+    getattr(subprocess, "CREATE_NO_WINDOW", 0) per restare portabili: su
+    Linux la costante non esiste e vale 0 (nessun flag), quindi lo stesso
+    sorgente resta valido su entrambi i sistemi.
+
+    Patch idempotente: se 'creationflags' e' gia' presente non fa nulla.
+    """
+    step("Correzione finestre del codec che compaiono ad ogni decodifica")
+
+    target = TETRAEAR_ROOT / "tetraear" / "audio" / "voice.py"
+    if not target.is_file():
+        logger.info("[INFO] %s non trovato, salto la patch.", target)
+        return
+
+    content = target.read_text(encoding="utf-8")
+    if "creationflags" in content:
+        logger.info("[OK] Finestre del codec gia' nascoste (patch gia' applicata).")
+        return
+
+    needle = (
+        "                stdout=subprocess.PIPE,\n"
+        "                stderr=subprocess.PIPE,\n"
+        "                check=False,\n"
+        "                timeout=5,\n"
+        "            )"
+    )
+    replacement = (
+        "                stdout=subprocess.PIPE,\n"
+        "                stderr=subprocess.PIPE,\n"
+        "                check=False,\n"
+        "                timeout=5,\n"
+        "                creationflags=getattr(subprocess, \"CREATE_NO_WINDOW\", 0),\n"
+        "            )"
+    )
+
+    occurrences = content.count(needle)
+    if occurrences == 0:
+        logger.warning(
+            "[ATTENZIONE] Non ho riconosciuto le chiamate subprocess.run del "
+            "codec in voice.py: la struttura del file a monte potrebbe essere "
+            "cambiata. Le finestrelle del codec potrebbero restare visibili."
+        )
+        return
+
+    patched = content.replace(needle, replacement)
+    target.write_text(patched, encoding="utf-8")
+    logger.info(
+        "[OK] Nascoste le finestre del codec in voice.py "
+        "(creationflags=CREATE_NO_WINDOW su %d chiamata/e).",
+        occurrences,
+    )
+
+
 # ============================================================
 # FASE 4 -- Compilazione del codec vocale ETSI TETRA (via MSYS2)
 # ============================================================
@@ -964,6 +1030,7 @@ def do_repair() -> None:
     step("Modalita' --repair: ricompilo il codec, sistemo pyrtlsdr e rtlsdr.dll")
     ensure_tetraear_source(clone_if_missing=True)
     patch_tetraear_source_bugs()
+    patch_voice_hide_codec_window()
     patch_pyrtlsdr_dithering()
     ensure_msys2_toolchain()
     install_windows_rtlsdr_dll()
@@ -1032,6 +1099,7 @@ def main() -> int:
         install_system_dependencies()
         ensure_tetraear_source(clone_if_missing=True)
         patch_tetraear_source_bugs()
+        patch_voice_hide_codec_window()
         create_virtualenv_and_install_requirements()
         install_windows_rtlsdr_dll()
         install_tetra_codec_with_fallback()
