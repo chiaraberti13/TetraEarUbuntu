@@ -457,6 +457,49 @@ def patch_pyrtlsdr_dithering() -> None:
     logger.info("[OK] pyrtlsdr reso compatibile con la libreria RTL-SDR.")
 
 
+def patch_tetraear_source_bugs() -> None:
+    """
+    Corregge un bug noto nel sorgente di TetraEar (progetto a monte) che
+    impedisce QUALSIASI decodifica.
+
+    In tetraear/ui/modern.py, dentro CaptureThread.run(), il codice legge
+    'self.signal_processor', attributo che non esiste: quello giusto -
+    creato in __init__ e usato per demodulare (self.processor =
+    SignalProcessor(...)) - si chiama 'self.processor'. Di conseguenza ogni
+    frame va in eccezione con:
+
+        Decode error: 'CaptureThread' object has no attribute 'signal_processor'
+
+    e non viene decodificato NULLA (tabella frame vuota, nessun audio).
+    Sostituiamo il riferimento errato con quello corretto. La chiamata usa
+    gia' getattr(..., 'symbol_confidence', None), quindi resta sicura anche
+    se l'oggetto non espone quell'attributo.
+
+    Patch idempotente: se il file non contiene piu' l'attributo sbagliato
+    (upstream corretto o patch gia' applicata) non fa nulla.
+    """
+    step("Correzione bug di decodifica nel sorgente di TetraEar")
+
+    target = TETRAEAR_ROOT / "tetraear" / "ui" / "modern.py"
+    if not target.is_file():
+        logger.info("[INFO] %s non trovato, salto la patch.", target)
+        return
+
+    content = target.read_text(encoding="utf-8")
+    occurrences = content.count("self.signal_processor")
+    if occurrences == 0:
+        logger.info("[OK] Bug 'signal_processor' non presente (gia' corretto).")
+        return
+
+    patched = content.replace("self.signal_processor", "self.processor")
+    target.write_text(patched, encoding="utf-8")
+    logger.info(
+        "[OK] Corretto il bug di decodifica in modern.py "
+        "(self.signal_processor -> self.processor, %d occorrenza/e).",
+        occurrences,
+    )
+
+
 # ============================================================
 # FASE 4 -- Compilazione del codec vocale ETSI TETRA (via MSYS2)
 # ============================================================
@@ -920,6 +963,7 @@ def warn_about_rtl_sdr_on_windows() -> None:
 def do_repair() -> None:
     step("Modalita' --repair: ricompilo il codec, sistemo pyrtlsdr e rtlsdr.dll")
     ensure_tetraear_source(clone_if_missing=True)
+    patch_tetraear_source_bugs()
     patch_pyrtlsdr_dithering()
     ensure_msys2_toolchain()
     install_windows_rtlsdr_dll()
@@ -987,6 +1031,7 @@ def main() -> int:
 
         install_system_dependencies()
         ensure_tetraear_source(clone_if_missing=True)
+        patch_tetraear_source_bugs()
         create_virtualenv_and_install_requirements()
         install_windows_rtlsdr_dll()
         install_tetra_codec_with_fallback()
