@@ -263,6 +263,11 @@ python -m tetraear -f 392.225
 - **Nothing decodes, logs full of `'CaptureThread' object has no attribute
   'signal_processor'`**: same upstream bug as Linux — the installer patches
   the TetraEar source automatically. Re-run the installer (or `--repair`).
+- **A black window flashes open on every decode**: the no-console launcher
+  (`pythonw`) makes each per-frame codec call (`cdecoder.exe`/`sdecoder.exe`)
+  spawn a visible console window. The installer now patches `voice.py` to run
+  the codec hidden (`CREATE_NO_WINDOW`). Re-run the installer (or
+  `python install_windows.py --repair`) to apply it.
 
 ---
 
@@ -532,6 +537,11 @@ python -m tetraear -f 392.225
 - **Non decodifica nulla, log pieni di `'CaptureThread' object has no attribute
   'signal_processor'`**: stesso bug a monte di Linux — l'installer corregge in
   automatico il sorgente di TetraEar. Rilancia l'installer (o `--repair`).
+- **Ad ogni decodifica compare/lampeggia una finestra nera**: il launcher senza
+  console (`pythonw`) fa aprire una finestra a ogni chiamata del codec
+  (`cdecoder.exe`/`sdecoder.exe`), una per frame. L'installer ora corregge
+  `voice.py` per eseguire il codec nascosto (`CREATE_NO_WINDOW`). Rilancia
+  l'installer (o `python install_windows.py --repair`) per applicare la modifica.
 
 ---
 
