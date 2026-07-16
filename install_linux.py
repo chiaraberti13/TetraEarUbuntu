@@ -48,7 +48,7 @@ from pathlib import Path
 # CONFIGURAZIONE
 # ============================================================
 
-SCRIPT_VERSION = "1.2"
+SCRIPT_VERSION = "1.3"
 MIN_PYTHON = (3, 8)
 SUPPORTED_OS_IDS = {"ubuntu", "debian"}
 
@@ -424,7 +424,58 @@ def _apt_package_available(pkg: str) -> bool:
 APT_LOCK_TIMEOUT = 600  # 10 minuti
 
 
-def _run_apt(args: list) -> None:
+def _run_dpkg_configure() -> bool:
+    """
+    Ripara un dpkg lasciato "a meta'" da una precedente installazione
+    interrotta (spegnimento, kill, aggiornamento fallito...). In quello
+    stato apt si rifiuta di procedere con il messaggio:
+
+        E: dpkg was interrupted, you must manually run
+           'sudo dpkg --configure -a' to correct the problem.
+
+    Eseguiamo esattamente quel comando di recupero al posto dell'utente.
+    E' idempotente e innocuo quando non c'e' nulla da riconfigurare.
+    Ritorna True se termina con successo.
+    """
+    cmd = ["dpkg", "--configure", "-a"]
+    if os.geteuid() != 0:
+        cmd = ["sudo"] + cmd
+
+    logger.info(
+        "Rilevato uno stato di dpkg interrotto da una precedente "
+        "installazione: eseguo 'sudo dpkg --configure -a' per ripararlo..."
+    )
+    logger.debug("Eseguo comando (streaming): %s", " ".join(cmd))
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+    except FileNotFoundError as exc:
+        logger.warning("Comando non trovato: %s (%s)", cmd[0], exc)
+        return False
+
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        logger.info(line.rstrip("\n"))
+    returncode = proc.wait()
+    logger.debug("Codice di uscita (dpkg --configure -a): %s", returncode)
+
+    if returncode == 0:
+        logger.info("[OK] Stato di dpkg ripristinato.")
+        return True
+
+    logger.warning(
+        "[ATTENZIONE] 'dpkg --configure -a' e' terminato con codice %s.",
+        returncode,
+    )
+    return False
+
+
+def _run_apt(args: list, _dpkg_recovery_attempted: bool = False) -> None:
     """
     Esegue 'apt-get <args>' con sudo facendogli ATTENDERE il lock di
     dpkg/apt invece di fallire subito se un altro processo lo sta usando.
@@ -472,6 +523,28 @@ def _run_apt(args: list) -> None:
         return
 
     output = "\n".join(captured)
+
+    # dpkg lasciato interrotto da una precedente installazione: apt rifiuta
+    # di procedere finche' non si esegue 'dpkg --configure -a'. Lo ripariamo
+    # in automatico e riproviamo il comando UNA sola volta (per non entrare
+    # in un ciclo se il problema fosse un altro).
+    dpkg_interrupted = (
+        "dpkg was interrupted" in output
+        or "dpkg --configure -a" in output
+    )
+    if dpkg_interrupted and not _dpkg_recovery_attempted:
+        if _run_dpkg_configure():
+            logger.info("Riprovo il comando apt dopo aver riparato dpkg...")
+            _run_apt(args, _dpkg_recovery_attempted=True)
+            return
+        fail(
+            "dpkg era rimasto in uno stato interrotto da una precedente "
+            "installazione e la riparazione automatica ('sudo dpkg "
+            "--configure -a') non e' riuscita. Esegui a mano "
+            "'sudo dpkg --configure -a', controlla gli errori che riporta, "
+            "poi rilancia 'python3 install_linux.py'."
+        )
+
     lock_busy = (
         "Could not get lock" in output
         or "frontend lock" in output

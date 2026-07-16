@@ -51,7 +51,7 @@ from pathlib import Path
 # CONFIGURAZIONE
 # ============================================================
 
-SCRIPT_VERSION = "1.2"
+SCRIPT_VERSION = "1.3"
 MIN_PYTHON = (3, 8)
 
 TETRAEAR_REPO_URL = "https://github.com/syrex1013/TetraEar.git"

@@ -162,6 +162,12 @@ through — the `avvia_tetraear.sh` script does exactly this.
   hold the package lock. The installer now waits for it automatically; if it
   ever gives up, wait 2–3 minutes for the updates to finish and re-run
   `python3 install_linux.py`.
+- **`dpkg was interrupted, you must manually run 'sudo dpkg --configure -a'`**:
+  a previous package operation was left half-finished (an interrupted update,
+  a forced shutdown…), so `apt` refuses to continue. The installer now detects
+  this and runs `sudo dpkg --configure -a` for you automatically, then retries.
+  If the automatic repair itself fails, run `sudo dpkg --configure -a` by hand,
+  read the errors it prints, then re-run `python3 install_linux.py`.
 - **GUI won't start, "could not load the Qt platform plugin xcb"**: the
   installer already installs the required Qt libraries; make sure you are in
   a graphical session (not headless SSH).
@@ -452,6 +458,13 @@ esce — lo script `avvia_tetraear.sh` fa esattamente questo.
   dopo l'avvio e tengono occupato il lock dei pacchetti. L'installer ora
   attende in automatico; se dovesse arrendersi, aspetta 2-3 minuti che gli
   aggiornamenti finiscano e rilancia `python3 install_linux.py`.
+- **`dpkg was interrupted, you must manually run 'sudo dpkg --configure -a'`**:
+  una precedente operazione sui pacchetti è rimasta a metà (un aggiornamento
+  interrotto, uno spegnimento forzato…), così `apt` si rifiuta di proseguire.
+  L'installer ora rileva questa situazione ed esegue automaticamente
+  `sudo dpkg --configure -a` al posto tuo, poi riprova. Se la riparazione
+  automatica fallisce a sua volta, esegui a mano `sudo dpkg --configure -a`,
+  leggi gli errori che riporta e poi rilancia `python3 install_linux.py`.
 - **La GUI non parte, "could not load the Qt platform plugin xcb"**:
   l'installer installa già le librerie Qt necessarie; assicurati di essere in
   una sessione grafica (non SSH senza display).
