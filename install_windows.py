@@ -459,24 +459,32 @@ def patch_pyrtlsdr_dithering() -> None:
 
 def patch_tetraear_source_bugs() -> None:
     """
-    Corregge un bug noto nel sorgente di TetraEar (progetto a monte) che
-    impedisce QUALSIASI decodifica.
+    Corregge due bug noti nel sorgente di TetraEar (progetto a monte) che
+    impediscono la decodifica. Entrambi stanno in tetraear/ui/modern.py,
+    dentro CaptureThread.run().
 
-    In tetraear/ui/modern.py, dentro CaptureThread.run(), il codice legge
-    'self.signal_processor', attributo che non esiste: quello giusto -
-    creato in __init__ e usato per demodulare (self.processor =
-    SignalProcessor(...)) - si chiama 'self.processor'. Di conseguenza ogni
-    frame va in eccezione con:
+    1) Il codice legge 'self.signal_processor', attributo che non esiste:
+       quello giusto - creato in __init__ e usato per demodulare
+       (self.processor = SignalProcessor(...)) - si chiama 'self.processor'.
+       Ogni frame andava in eccezione con:
 
-        Decode error: 'CaptureThread' object has no attribute 'signal_processor'
+           Decode error: 'CaptureThread' object has no attribute 'signal_processor'
 
-    e non viene decodificato NULLA (tabella frame vuota, nessun audio).
-    Sostituiamo il riferimento errato con quello corretto. La chiamata usa
-    gia' getattr(..., 'symbol_confidence', None), quindi resta sicura anche
-    se l'oggetto non espone quell'attributo.
+       e non veniva decodificato NULLA (tabella frame vuota, nessun audio).
 
-    Patch idempotente: se il file non contiene piu' l'attributo sbagliato
-    (upstream corretto o patch gia' applicata) non fa nulla.
+    2) Il path di decodifica vocale usa 'self.tch_assembler', ma
+       CaptureThread non lo inizializza mai: l'assembler viene creato solo
+       in ModernTetraGUI (un'altra classe). Ogni frame vocale andava in
+       eccezione con:
+
+           Voice decode error: 'CaptureThread' object has no attribute 'tch_assembler'
+
+       Lo correggiamo in due modi complementari: rendiamo l'accesso sicuro
+       con getattr(...) (niente piu' crash anche se l'__init__ a monte
+       cambia) e inizializziamo davvero l'assembler nell'__init__ di
+       CaptureThread, cosi' il path TCH viene usato quando disponibile.
+
+    Patch idempotente: se il sorgente e' gia' corretto non fa nulla.
     """
     step("Correzione bug di decodifica nel sorgente di TetraEar")
 
@@ -486,18 +494,68 @@ def patch_tetraear_source_bugs() -> None:
         return
 
     content = target.read_text(encoding="utf-8")
-    occurrences = content.count("self.signal_processor")
-    if occurrences == 0:
-        logger.info("[OK] Bug 'signal_processor' non presente (gia' corretto).")
-        return
+    changed = False
 
-    patched = content.replace("self.signal_processor", "self.processor")
-    target.write_text(patched, encoding="utf-8")
-    logger.info(
-        "[OK] Corretto il bug di decodifica in modern.py "
-        "(self.signal_processor -> self.processor, %d occorrenza/e).",
-        occurrences,
-    )
+    # --- Bug 1: self.signal_processor -> self.processor ------------------
+    occ1 = content.count("self.signal_processor")
+    if occ1:
+        content = content.replace("self.signal_processor", "self.processor")
+        changed = True
+        logger.info(
+            "[OK] Corretto 'signal_processor' -> 'processor' (%d occorrenza/e).",
+            occ1,
+        )
+    else:
+        logger.info("[OK] Bug 'signal_processor' non presente (gia' corretto).")
+
+    # --- Bug 2a: accesso sicuro a self.tch_assembler ---------------------
+    occ2 = content.count("if self.tch_assembler:")
+    if occ2:
+        content = content.replace(
+            "if self.tch_assembler:",
+            'if getattr(self, "tch_assembler", None):',
+        )
+        changed = True
+        logger.info(
+            "[OK] Reso sicuro l'accesso a 'tch_assembler' (%d occorrenza/e).",
+            occ2,
+        )
+    else:
+        logger.info("[OK] Accesso a 'tch_assembler' gia' sicuro (gia' corretto).")
+
+    # --- Bug 2b: inizializza tch_assembler in CaptureThread.__init__ -----
+    init_marker = "self.tch_assembler = None  # inizializzato da TetraEar installer"
+    anchor = "        self.encryption_keys = []  # List of keys for bruteforce\n"
+    if init_marker in content:
+        logger.info("[OK] 'tch_assembler' gia' inizializzato in CaptureThread.")
+    elif anchor in content:
+        injection = (
+            anchor
+            + "        # TetraEar: CaptureThread usa self.tch_assembler nel path di\n"
+            + "        # decodifica vocale ma l'upstream non lo crea qui. Lo\n"
+            + "        # inizializziamo per evitare l'AttributeError e usare il TCH.\n"
+            + "        " + init_marker + "\n"
+            + "        try:\n"
+            + "            from tetraear.audio.tch import TchFrameAssembler\n"
+            + "            self.tch_assembler = TchFrameAssembler()\n"
+            + "        except Exception:\n"
+            + "            self.tch_assembler = None\n"
+        )
+        content = content.replace(anchor, injection, 1)
+        changed = True
+        logger.info("[OK] Inizializzato 'tch_assembler' in CaptureThread.__init__.")
+    else:
+        logger.warning(
+            "[ATTENZIONE] Non ho trovato il punto in cui inizializzare "
+            "'tch_assembler' in CaptureThread: la struttura del file a monte "
+            "potrebbe essere cambiata. L'accesso resta comunque sicuro (getattr)."
+        )
+
+    if changed:
+        target.write_text(content, encoding="utf-8")
+        logger.info("[OK] modern.py aggiornato.")
+    else:
+        logger.info("[OK] Nessuna modifica necessaria a modern.py.")
 
 
 def patch_voice_hide_codec_window() -> None:
