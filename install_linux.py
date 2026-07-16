@@ -48,7 +48,7 @@ from pathlib import Path
 # CONFIGURAZIONE
 # ============================================================
 
-SCRIPT_VERSION = "1.1"
+SCRIPT_VERSION = "1.2"
 MIN_PYTHON = (3, 8)
 SUPPORTED_OS_IDS = {"ubuntu", "debian"}
 
@@ -1208,6 +1208,99 @@ def patch_voice_hide_codec_window() -> None:
     )
 
 
+def patch_voice_codec_timeout() -> None:
+    """
+    Rende piu' tollerante (e configurabile) il timeout del codec vocale.
+
+    Per OGNI frame vocale, tetraear/audio/voice.py invoca due processi
+    esterni (cdecoder / sdecoder) con 'subprocess.run(..., timeout=5)'. Quel
+    tetto di 5 secondi e' generoso a regime (il codec impiega pochi
+    millisecondi), ma diventa un problema quando il sistema e' lento o "a
+    freddo": alle prime chiamate, mentre l'antivirus analizza gli eseguibili
+    appena compilati (tipico su Windows Defender) o su una macchina carica,
+    l'esecuzione puo' superare i 5s. In quel caso subprocess.run solleva
+    TimeoutExpired: il frame, per quanto decodificabile, viene scartato e la
+    voce sembra "non decodificarsi".
+
+    La patch:
+      - inietta un timeout configurabile via la variabile d'ambiente
+        TETRAEAR_CODEC_TIMEOUT (default 15 secondi, contro i 5 originali);
+      - sostituisce i due 'timeout=5' delle chiamate al codec con quel valore.
+
+    Il valore piu' alto non rallenta la decodifica a regime (il codec esce
+    comunque in pochi ms): alza solo il tetto oltre cui si rinuncia, cosi'
+    non si perdono frame validi quando il sistema e' momentaneamente lento.
+
+    Va applicata DOPO patch_voice_hide_codec_window(): quest'ultima cerca la
+    riga 'timeout=5' come ancora, quindi deve trovarla ancora intatta.
+
+    Patch idempotente: se il timeout configurabile e' gia' presente non fa
+    nulla.
+    """
+    step("Timeout del codec vocale piu' tollerante e configurabile")
+
+    target = TETRAEAR_ROOT / "tetraear" / "audio" / "voice.py"
+    if not target.is_file():
+        logger.info("[INFO] %s non trovato, salto la patch.", target)
+        return
+
+    content = target.read_text(encoding="utf-8")
+    if "_CODEC_TIMEOUT" in content:
+        logger.info("[OK] Timeout del codec gia' configurabile (patch gia' applicata).")
+        return
+
+    # 1) Inietta la costante subito dopo la creazione dei logger del modulo.
+    anchor = 'codec_logger = logging.getLogger("tetraear.codec")\n'
+    definition = (
+        anchor
+        + "\n"
+        + "# --- TetraEar: timeout del codec configurabile -----------------------\n"
+        + "# Un timeout troppo aggressivo scarta frame decodificabili quando il\n"
+        + "# sistema e' lento o al primo avvio (es. l'antivirus analizza gli\n"
+        + "# eseguibili del codec appena compilati). Lo rendiamo configurabile via\n"
+        + "# TETRAEAR_CODEC_TIMEOUT (in secondi) con un default piu' tollerante.\n"
+        + "def _tetraear_codec_timeout() -> float:\n"
+        + "    try:\n"
+        + '        value = float(os.environ.get("TETRAEAR_CODEC_TIMEOUT", "15"))\n'
+        + "    except (TypeError, ValueError):\n"
+        + "        value = 15.0\n"
+        + "    return value if value > 0 else 15.0\n"
+        + "\n"
+        + "\n"
+        + "_CODEC_TIMEOUT = _tetraear_codec_timeout()\n"
+        + "# --- Fine timeout del codec configurabile ----------------------------\n"
+    )
+    if anchor not in content:
+        logger.warning(
+            "[ATTENZIONE] Non ho trovato il punto in cui iniettare il timeout "
+            "configurabile in voice.py: la struttura del file a monte potrebbe "
+            "essere cambiata. Il timeout del codec resta a 5 secondi."
+        )
+        return
+    content = content.replace(anchor, definition, 1)
+
+    # 2) Usa il timeout configurabile nelle chiamate al codec. L'ancora
+    #    'check=False,' + 'timeout=5,' resta valida sia prima sia dopo la
+    #    patch delle finestre (che aggiunge 'creationflags' DOPO 'timeout').
+    needle = "                check=False,\n                timeout=5,\n"
+    replacement = "                check=False,\n                timeout=_CODEC_TIMEOUT,\n"
+    occurrences = content.count(needle)
+    if occurrences == 0:
+        logger.warning(
+            "[ATTENZIONE] Non ho riconosciuto le chiamate 'timeout=5' del codec "
+            "in voice.py: il timeout resta invariato."
+        )
+        return
+    content = content.replace(needle, replacement)
+
+    target.write_text(content, encoding="utf-8")
+    logger.info(
+        "[OK] Timeout del codec reso configurabile in voice.py "
+        "(TETRAEAR_CODEC_TIMEOUT, default 15s, su %d chiamata/e).",
+        occurrences,
+    )
+
+
 # ============================================================
 # FASE 4d -- Launcher senza terminale (icona / doppio clic)
 # ============================================================
@@ -1414,6 +1507,7 @@ def do_repair() -> None:
     ensure_tetraear_source(clone_if_missing=True)
     patch_tetraear_source_bugs()
     patch_voice_hide_codec_window()
+    patch_voice_codec_timeout()
     patch_pyrtlsdr_dithering()
     install_tetra_codec_with_fallback()
     create_launchers()
@@ -1482,6 +1576,7 @@ def main() -> int:
         ensure_tetraear_source(clone_if_missing=True)
         patch_tetraear_source_bugs()
         patch_voice_hide_codec_window()
+        patch_voice_codec_timeout()
         create_virtualenv_and_install_requirements()
         # La configurazione della chiavetta viene fatta PRIMA del codec:
         # il codec dipende da un download esterno (ETSI) che potrebbe
