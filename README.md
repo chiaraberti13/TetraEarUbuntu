@@ -182,6 +182,15 @@ through — the `avvia_tetraear.sh` script does exactly this.
   upstream TetraEar source (a wrong attribute name in the capture thread).
   The installer patches it automatically; if you updated the script, re-run
   `python3 install_linux.py` (or `--repair`).
+- **Voice is choppy / decodes only in part on a slow machine**: each voice
+  frame runs the ETSI codec as an external process. On a loaded or "cold"
+  system (e.g. the first calls, while the antivirus scans the freshly compiled
+  codec) that can exceed the codec's per-frame timeout, so otherwise-decodable
+  frames get dropped. The installer raises the default timeout from 5 s to
+  15 s; you can tune it with the `TETRAEAR_CODEC_TIMEOUT` environment variable
+  (in seconds). Re-run `python3 install_linux.py` (or `--repair`) to apply the
+  patch. This depends on the upstream project and your signal, not on the
+  installer.
 
 ---
 
@@ -268,6 +277,15 @@ python -m tetraear -f 392.225
   spawn a visible console window. The installer now patches `voice.py` to run
   the codec hidden (`CREATE_NO_WINDOW`). Re-run the installer (or
   `python install_windows.py --repair`) to apply it.
+- **Voice is choppy / decodes only in part on a slow machine**: each voice
+  frame runs the ETSI codec (`cdecoder.exe`/`sdecoder.exe`) as an external
+  process. On a loaded or "cold" system — typically the first calls, while
+  Windows Defender scans the freshly compiled codec — that can exceed the
+  codec's per-frame timeout, so otherwise-decodable frames get dropped. The
+  installer raises the default timeout from 5 s to 15 s; you can tune it with
+  the `TETRAEAR_CODEC_TIMEOUT` environment variable (in seconds). Re-run the
+  installer (or `python install_windows.py --repair`) to apply the patch. This
+  depends on the upstream project and your signal, not on the installer.
 
 ---
 
@@ -455,6 +473,15 @@ esce — lo script `avvia_tetraear.sh` fa esattamente questo.
   sorgente TetraEar a monte (nome di attributo errato nel thread di cattura).
   L'installer lo corregge in automatico; se hai aggiornato lo script, rilancia
   `python3 install_linux.py` (o `--repair`).
+- **La voce è a scatti / si decodifica solo in parte su una macchina lenta**:
+  ogni frame vocale esegue il codec ETSI come processo esterno. Su un sistema
+  carico o "a freddo" (es. alle prime chiamate, mentre l'antivirus analizza il
+  codec appena compilato) l'esecuzione può superare il timeout per-frame del
+  codec, così i frame altrimenti decodificabili vengono scartati. L'installer
+  alza il timeout predefinito da 5 s a 15 s; puoi regolarlo con la variabile
+  d'ambiente `TETRAEAR_CODEC_TIMEOUT` (in secondi). Rilancia
+  `python3 install_linux.py` (o `--repair`) per applicare la patch. Dipende dal
+  progetto a monte e dal tuo segnale, non dall'installer.
 
 ---
 
@@ -542,6 +569,16 @@ python -m tetraear -f 392.225
   (`cdecoder.exe`/`sdecoder.exe`), una per frame. L'installer ora corregge
   `voice.py` per eseguire il codec nascosto (`CREATE_NO_WINDOW`). Rilancia
   l'installer (o `python install_windows.py --repair`) per applicare la modifica.
+- **La voce è a scatti / si decodifica solo in parte su una macchina lenta**:
+  ogni frame vocale esegue il codec ETSI (`cdecoder.exe`/`sdecoder.exe`) come
+  processo esterno. Su un sistema carico o "a freddo" — tipicamente alle prime
+  chiamate, mentre Windows Defender analizza il codec appena compilato —
+  l'esecuzione può superare il timeout per-frame del codec, così i frame
+  altrimenti decodificabili vengono scartati. L'installer alza il timeout
+  predefinito da 5 s a 15 s; puoi regolarlo con la variabile d'ambiente
+  `TETRAEAR_CODEC_TIMEOUT` (in secondi). Rilancia l'installer (o
+  `python install_windows.py --repair`) per applicare la patch. Dipende dal
+  progetto a monte e dal tuo segnale, non dall'installer.
 
 ---
 
