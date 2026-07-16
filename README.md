@@ -172,6 +172,11 @@ through — the `avvia_tetraear.sh` script does exactly this.
   to whether a dongle is connected — it happens at import time.
 - **ETSI codec download fails**: try again later (the ETSI site is sometimes
   unreachable), then `python3 install_linux.py --repair`.
+- **Nothing decodes, `decoder.log`/`app.log` full of `Decode error:
+  'CaptureThread' object has no attribute 'signal_processor'`**: a bug in the
+  upstream TetraEar source (a wrong attribute name in the capture thread).
+  The installer patches it automatically; if you updated the script, re-run
+  `python3 install_linux.py` (or `--repair`).
 
 ---
 
@@ -250,6 +255,9 @@ python -m tetraear -f 392.225
   persists, check `install.log`.
 - **On start: `undefined symbol: rtlsdr_set_dithering`**: same fix as Linux —
   the installer patches `pyrtlsdr`. Re-run the installer (or `--repair`).
+- **Nothing decodes, logs full of `'CaptureThread' object has no attribute
+  'signal_processor'`**: same upstream bug as Linux — the installer patches
+  the TetraEar source automatically. Re-run the installer (or `--repair`).
 
 ---
 
@@ -427,6 +435,11 @@ esce — lo script `avvia_tetraear.sh` fa esattamente questo.
   dalla chiavetta: l'errore compare all'`import`.
 - **Il download del codec da ETSI fallisce**: riprova più tardi (a volte il
   sito ETSI è irraggiungibile), poi `python3 install_linux.py --repair`.
+- **Non decodifica nulla, `decoder.log`/`app.log` pieni di `Decode error:
+  'CaptureThread' object has no attribute 'signal_processor'`**: è un bug del
+  sorgente TetraEar a monte (nome di attributo errato nel thread di cattura).
+  L'installer lo corregge in automatico; se hai aggiornato lo script, rilancia
+  `python3 install_linux.py` (o `--repair`).
 
 ---
 
@@ -506,6 +519,9 @@ python -m tetraear -f 392.225
 - **All'avvio: `undefined symbol: rtlsdr_set_dithering`**: stessa soluzione di
   Linux — l'installer applica la patch a `pyrtlsdr`. Rilancia l'installer (o
   `--repair`).
+- **Non decodifica nulla, log pieni di `'CaptureThread' object has no attribute
+  'signal_processor'`**: stesso bug a monte di Linux — l'installer corregge in
+  automatico il sorgente di TetraEar. Rilancia l'installer (o `--repair`).
 
 ---
 
