@@ -28,7 +28,21 @@ else
 fi
 
 cd "$ROOT"
-mkdir -p logs
+
+# Unica cartella per tutti i log: se TetraEar e' una sottocartella, la sua
+# logs/ e' (o diventa) un link simbolico a quella accanto all'installer,
+# cosi' i log dell'app e quelli di installazione stanno in un posto solo.
+if [ "$ROOT" != "$HERE" ] && [ ! -L "logs" ]; then
+    mkdir -p "$HERE/logs"
+    if [ -d "logs" ]; then
+        mv logs/* "$HERE/logs/" 2>/dev/null || true
+        rmdir logs 2>/dev/null || true
+    fi
+    if [ ! -e "logs" ]; then
+        ln -s ../logs logs
+    fi
+fi
+mkdir -p "$(readlink -f logs)"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 CONSOLE_LOG="logs/console_${STAMP}.log"
 

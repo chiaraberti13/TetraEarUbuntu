@@ -344,6 +344,45 @@ def ensure_tetraear_source(clone_if_missing: bool = True) -> Path:
     return cloned_dir
 
 
+def unify_logs_dir() -> None:
+    """
+    Unica cartella per TUTTI i log. Se TetraEar e' una sottocartella (il caso
+    normale), la sua 'logs/' diventa un link simbolico alla 'logs/' accanto
+    all'installer: install.log, install_extra.log, codec_*.log, console_*.log
+    ecc. finiscono cosi' fisicamente in un solo posto. Ogni file ha gia' un
+    prefisso specifico, quindi non si mescolano. Eventuali log gia' presenti
+    in TetraEar/logs vengono spostati, non persi. Best-effort: un errore qui
+    non blocca l'installazione.
+    """
+    if TETRAEAR_ROOT == INSTALLER_DIR:
+        return  # lo script e' gia' dentro TetraEar: esiste una sola logs/
+
+    app_logs = TETRAEAR_ROOT / "logs"
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+        if app_logs.is_symlink():
+            if app_logs.resolve() == LOG_DIR.resolve():
+                return  # gia' unificata
+            app_logs.unlink()
+        elif app_logs.is_dir():
+            # Migro i log esistenti nella cartella unificata (senza
+            # sovrascrivere eventuali omonimi gia' presenti).
+            for entry in app_logs.iterdir():
+                target = LOG_DIR / entry.name
+                if not target.exists():
+                    shutil.move(str(entry), str(target))
+            app_logs.rmdir()
+
+        os.symlink(os.path.relpath(LOG_DIR, TETRAEAR_ROOT), app_logs)
+        logger.info("[OK] Cartella log unificata: %s -> %s", app_logs, LOG_DIR)
+    except OSError as exc:
+        logger.warning(
+            "[ATTENZIONE] Non sono riuscito a unificare le cartelle dei log (%s): "
+            "l'app continuera' a scrivere in %s.", exc, app_logs
+        )
+
+
 def _clone_tetraear_pinned(repo_url: str, ref: str, dest: Path) -> None:
     """
     Clona TetraEar fissando ESATTAMENTE il commit/ref richiesto, cosi'
@@ -1497,7 +1536,9 @@ def create_launchers() -> None:
         "# Generato da install_linux.py: usato dal launcher .desktop\n"
         "# (doppio clic) perche' anche cosi' vengano prodotti i log.\n"
         f'cd "{TETRAEAR_ROOT}" || exit 1\n'
-        'mkdir -p logs\n'
+        "# logs/ puo' essere un symlink alla cartella log unificata accanto\n"
+        "# all'installer: readlink -f la risolve e la (ri)crea se serve.\n"
+        'mkdir -p "$(readlink -f logs)"\n'
         'STAMP="$(date +%Y%m%d_%H%M%S)"\n'
         '# shellcheck disable=SC1091\n'
         'source .venv/bin/activate\n'
@@ -1666,6 +1707,7 @@ def check_rtl_sdr_dongle() -> None:
 def do_repair() -> None:
     step("Modalita' --repair: ricompilo il codec vocale e sistemo la compatibilita' pyrtlsdr")
     ensure_tetraear_source(clone_if_missing=True)
+    unify_logs_dir()
     patch_tetraear_source_bugs()
     patch_voice_hide_codec_window()
     patch_voice_codec_timeout()
@@ -1820,6 +1862,7 @@ def main() -> int:
 
         install_system_dependencies()
         ensure_tetraear_source(clone_if_missing=True)
+        unify_logs_dir()
         patch_tetraear_source_bugs()
         patch_voice_hide_codec_window()
         patch_voice_codec_timeout()
