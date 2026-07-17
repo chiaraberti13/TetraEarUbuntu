@@ -211,6 +211,45 @@ through — the `avvia_tetraear.sh` script does exactly this.
 
 ---
 
+### 📡 Additional decoders (DMR, P25, ADS-B, pagers) — Linux
+
+TetraEar decodes TETRA. An RTL-SDR dongle can receive many other modes too —
+the same ones closed programs like OpenEar covered, but here with **open
+source** tools. The companion script `install_extra_decoders.py` sets them up
+in the same spirit as the TetraEar installer (logging to `install_extra.log`,
+each decoder independent):
+
+| Tool | Decodes |
+| --- | --- |
+| **multimon-ng** | POCSAG / FLEX pagers and other FSK/AFSK modes |
+| **dump1090** | ADS-B 1090 MHz (aircraft positions, web map) |
+| **dsd-fme** | DMR / P25 / NXDN / dPMR (**unencrypted** digital voice) |
+
+```bash
+python3 install_extra_decoders.py                 # install all three
+python3 install_extra_decoders.py --only dump1090 # just one (or a subset)
+python3 install_extra_decoders.py --check         # see what's installed
+```
+
+After install, typical usage (needs the dongle plugged in):
+
+```bash
+# Pagers (POCSAG), e.g. 439.9875 MHz
+rtl_fm -f 439.9875M -s 22050 -g 42 - | \
+  multimon-ng -t raw -a POCSAG1200 -f alpha /dev/stdin
+# Aircraft (ADS-B), web map on http://localhost:8080
+dump1090 --interactive --net
+# DMR/P25 clear voice, e.g. 446.09375 MHz
+rtl_fm -f 446.09375M -s 48000 -g 42 - | dsd-fme -i - -o /dev/null
+```
+
+> ℹ️ As always: you'll only see traffic if you're on the right frequency with
+> enough signal, and **encrypted** voice/data can't be decoded without the
+> keys — by any software. Use only where permitted by law (see
+> [DISCLAIMER](DISCLAIMER.md)).
+
+---
+
 ### 🪟 Windows
 
 Tested on **Windows 10** and **Windows 11** (64-bit).
@@ -525,6 +564,45 @@ esce — lo script `avvia_tetraear.sh` fa esattamente questo.
   d'ambiente `TETRAEAR_CODEC_TIMEOUT` (in secondi). Rilancia
   `python3 install_linux.py` (o `--repair`) per applicare la patch. Dipende dal
   progetto a monte e dal tuo segnale, non dall'installer.
+
+---
+
+### 📡 Decoder aggiuntivi (DMR, P25, ADS-B, cercapersone) — Linux
+
+TetraEar decodifica il TETRA. Ma una chiavetta RTL-SDR riceve molti altri modi
+— gli stessi che programmi chiusi come OpenEar coprivano, qui però con
+strumenti **open source**. Lo script complementare `install_extra_decoders.py`
+li prepara nello stesso spirito dell'installer di TetraEar (log in
+`install_extra.log`, ogni decoder indipendente):
+
+| Strumento | Cosa decodifica |
+| --- | --- |
+| **multimon-ng** | cercapersone POCSAG / FLEX e altri modi FSK/AFSK |
+| **dump1090** | ADS-B 1090 MHz (posizione aerei, mappa web) |
+| **dsd-fme** | DMR / P25 / NXDN / dPMR (voce digitale **in chiaro**) |
+
+```bash
+python3 install_extra_decoders.py                 # installa tutti e tre
+python3 install_extra_decoders.py --only dump1090 # solo uno (o un sottoinsieme)
+python3 install_extra_decoders.py --check         # vedi cosa è installato
+```
+
+Dopo l'installazione, uso tipico (con la chiavetta collegata):
+
+```bash
+# Cercapersone (POCSAG), es. 439.9875 MHz
+rtl_fm -f 439.9875M -s 22050 -g 42 - | \
+  multimon-ng -t raw -a POCSAG1200 -f alpha /dev/stdin
+# Aerei (ADS-B), mappa web su http://localhost:8080
+dump1090 --interactive --net
+# Voce DMR/P25 in chiaro, es. 446.09375 MHz
+rtl_fm -f 446.09375M -s 48000 -g 42 - | dsd-fme -i - -o /dev/null
+```
+
+> ℹ️ Come sempre: vedi traffico solo se sei sulla frequenza giusta con segnale
+> sufficiente, e la voce/dati **cifrati** non sono decodificabili senza le
+> chiavi — da nessun software. Usa solo dove consentito dalla legge (vedi
+> [DISCLAIMER](DISCLAIMER.md)).
 
 ---
 
