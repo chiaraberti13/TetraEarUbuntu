@@ -196,28 +196,68 @@ def _apt_install(packages: list) -> None:
     run(["apt-get", "install", "-y"] + packages, sudo=True)
 
 
-def _ensure_command(cmd_name: str, apt_package: str) -> bool:
+def _command_works(cmd_bin: str) -> bool:
+    """Un comando e' DAVVERO utilizzabile solo se lo si riesce a lanciare:
+    non basta che apt lo dia installato o che sia nel PATH (su sistemi con
+    stato dpkg incoerente puo' esserci ma non caricarsi, es. librerie
+    condivise mancanti)."""
+    try:
+        result = subprocess.run([cmd_bin, "--version"], capture_output=True, text=True)
+        return result.returncode == 0
+    except (OSError, FileNotFoundError):
+        return False
+
+
+def _ensure_working_cmake() -> str | None:
     """
-    Verifica che un comando sia DAVVERO eseguibile (non basta che apt lo dia
-    per installato: su alcuni sistemi/immagini il pacchetto risulta installato
-    ma il binario non e' nel PATH). Se manca, prova una reinstallazione forzata
-    e, se ancora assente, spiega chiaramente cosa fare.
+    Restituisce il percorso di un cmake FUNZIONANTE, o None se impossibile.
+
+    Passi, dal piu' leggero al piu' robusto:
+      1. cmake di sistema, se si lancia davvero;
+      2. reinstallazione forzata via apt (per stati dpkg incoerenti);
+      3. fallback definitivo: una copia di cmake installata via pip in un
+         piccolo venv dedicato. Il wheel di PyPI e' self-contained (porta con
+         se' le proprie librerie), quindi funziona anche su sistemi in cui il
+         cmake di sistema e' rotto (es. 'librhash.so.1' mancante).
     """
-    if shutil.which(cmd_name):
-        return True
+    if _command_works("cmake"):
+        return "cmake"
+
+    logger.warning("[ATTENZIONE] 'cmake' assente o non funzionante: provo a reinstallarlo via apt...")
+    run(["apt-get", "install", "--reinstall", "-y", "cmake"], sudo=True, check=False)
+    if _command_works("cmake"):
+        logger.info("[OK] 'cmake' di sistema ora funziona.")
+        return "cmake"
+
     logger.warning(
-        "[ATTENZIONE] '%s' non e' nel PATH anche se apt lo dava installato: "
-        "provo a reinstallare '%s'...", cmd_name, apt_package,
+        "[ATTENZIONE] Il 'cmake' di sistema non e' utilizzabile (dipendenze "
+        "rotte). Installo una copia autonoma di cmake via pip..."
     )
-    run(["apt-get", "install", "--reinstall", "-y", apt_package], sudo=True, check=False)
-    if shutil.which(cmd_name):
-        logger.info("[OK] '%s' ora e' disponibile.", cmd_name)
-        return True
+    venv_dir = INSTALLER_DIR / "decoders" / "buildtools"
+    cmake_bin = venv_dir / "bin" / "cmake"
+    try:
+        if not cmake_bin.exists():
+            # 'ensurepip' a volte manca: assicuriamo python3-venv (best effort).
+            run(["apt-get", "install", "-y", "python3-venv", "python3-pip"], sudo=True, check=False)
+            run([sys.executable, "-m", "venv", str(venv_dir)])
+            pip = str(venv_dir / "bin" / "pip")
+            run([pip, "install", "--upgrade", "pip"], check=False)
+            # cmake 4.x rifiuta i progetti vecchi (mbelib): pinniamo alla 3.x,
+            # che e' comunque self-contained e compila senza problemi di policy.
+            run([pip, "install", "cmake<4"])
+    except InstallError:
+        pass
+
+    if _command_works(str(cmake_bin)):
+        logger.info("[OK] Uso una copia autonoma di cmake (via pip): %s", cmake_bin)
+        return str(cmake_bin)
+
     logger.error(
-        "[FALLITO] '%s' non e' disponibile. Installalo a mano con "
-        "'sudo apt install %s' e rilancia l'installer.", cmd_name, apt_package,
+        "[FALLITO] Impossibile ottenere un cmake funzionante. Il tuo sistema "
+        "ha uno stato pacchetti incoerente; prova a mano: "
+        "'sudo apt install --reinstall cmake librhash0' e rilancia."
     )
-    return False
+    return None
 
 
 def _install_local_binary(built_path: Path, name: str) -> Path:
@@ -300,14 +340,17 @@ def install_dump1090() -> bool:
 # DECODER 3 -- dsd-fme (DMR / P25 / NXDN / dPMR ...)
 # ============================================================
 
-def _build_and_install_cmake(repo_url: str, name: str, extra_cmake: list | None = None) -> None:
+def _build_and_install_cmake(repo_url: str, name: str, cmake_bin: str, extra_cmake: list | None = None) -> None:
     work = Path(tempfile.mkdtemp(prefix=f"{name}-"))
     try:
         src = work / name
         run(["git", "clone", "--depth", "1", repo_url, str(src)])
         build = src / "build"
         build.mkdir()
-        run(["cmake"] + (extra_cmake or []) + [".."], cwd=build)
+        # -DCMAKE_POLICY_VERSION_MINIMUM=3.5 permette anche ai cmake 4.x di
+        # compilare progetti vecchi (mbelib) che chiedono una policy < 3.5.
+        cmake_args = ["-DCMAKE_POLICY_VERSION_MINIMUM=3.5"] + (extra_cmake or [])
+        run([cmake_bin] + cmake_args + [".."], cwd=build)
         run(["make"], cwd=build)
         run(["make", "install"], cwd=build, sudo=True)
         run(["ldconfig"], sudo=True, check=False)
@@ -317,10 +360,11 @@ def _build_and_install_cmake(repo_url: str, name: str, extra_cmake: list | None 
 
 def install_dsd_fme() -> bool:
     step("dsd-fme (voce digitale in chiaro: DMR / P25 / NXDN / dPMR)")
-    # dsd-fme si compila con cmake: verifichiamo che sia DAVVERO eseguibile
-    # (su alcuni sistemi apt lo da' installato ma il binario non c'e').
-    if not _ensure_command("cmake", "cmake"):
-        logger.warning("[ATTENZIONE] Salto dsd-fme: manca 'cmake'.")
+    # dsd-fme si compila con cmake: ci procuriamo un cmake DAVVERO funzionante
+    # (di sistema se possibile, altrimenti una copia autonoma via pip).
+    cmake_bin = _ensure_working_cmake()
+    if cmake_bin is None:
+        logger.warning("[ATTENZIONE] Salto dsd-fme: nessun 'cmake' utilizzabile.")
         return False
     # dsd-fme dipende dalla libreria mbelib (vocoder AMBE) e da alcune -dev.
     _apt_install([
@@ -328,9 +372,9 @@ def install_dsd_fme() -> bool:
     ])
     try:
         logger.info("Compilo la libreria mbelib (prerequisito del vocoder)...")
-        _build_and_install_cmake(MBELIB_REPO, "mbelib")
+        _build_and_install_cmake(MBELIB_REPO, "mbelib", cmake_bin)
         logger.info("Compilo dsd-fme...")
-        _build_and_install_cmake(DSDFME_REPO, "dsd-fme")
+        _build_and_install_cmake(DSDFME_REPO, "dsd-fme", cmake_bin)
     except InstallError:
         logger.warning(
             "[ATTENZIONE] Compilazione di dsd-fme non riuscita. E' il decoder piu' "
