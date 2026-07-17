@@ -1,7 +1,9 @@
 __pycache__/
 *.pyc
 .venv/
-install.log
 TetraEar/
-install_extra.log
 decoders/
+logs/
+# vecchi percorsi dei log (ora tutto in logs/), lasciati per compatibilità
+install.log
+install_extra.log

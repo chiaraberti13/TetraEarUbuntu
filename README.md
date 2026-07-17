@@ -40,8 +40,9 @@ source code automatically.
 6. Download and compile the ETSI TETRA voice codec.
 7. Verify that everything is in place.
 
-Everything that happens is recorded in **`install.log`**, next to the
-installer — attach that file if you ever need support.
+Everything that happens is recorded in **`logs/install.log`** (all logs,
+including the app's, live in the `logs/` folder) — attach that file if you
+ever need support.
 
 ### Requirements
 
@@ -215,9 +216,7 @@ through — the `avvia_tetraear.sh` script does exactly this.
 
 TetraEar decodes TETRA. An RTL-SDR dongle can receive many other modes too —
 the same ones closed programs like OpenEar covered, but here with **open
-source** tools. The companion script `install_extra_decoders.py` sets them up
-in the same spirit as the TetraEar installer (logging to `install_extra.log`,
-each decoder independent):
+source** tools:
 
 | Tool | Decodes |
 | --- | --- |
@@ -225,8 +224,12 @@ each decoder independent):
 | **dump1090** | ADS-B 1090 MHz (aircraft positions, web map) |
 | **dsd-fme** | DMR / P25 / NXDN / dPMR (**unencrypted** digital voice) |
 
+**These are installed automatically** at the end of `python3 install_linux.py`
+(logs in `logs/install_extra.log`, each decoder independent). Pass `--no-extra`
+to skip them, or run the companion script on its own later:
+
 ```bash
-python3 install_extra_decoders.py                 # install all three
+python3 install_extra_decoders.py                 # (re)install all three
 python3 install_extra_decoders.py --only dump1090 # just one (or a subset)
 python3 install_extra_decoders.py --check         # see what's installed
 ```
@@ -284,6 +287,11 @@ ZIP**, extract it and open the folder. Either way you need
   **MSYS2** (the C compiler needed for the codec), downloads TetraEar,
   creates the environment, installs the Python packages and compiles the
   codec.
+- At the end it also sets up the **additional decoders** automatically
+  (`install_extra_decoders_windows.py`): it downloads the official **dsd-fme**
+  Windows build and prints guided steps for **dump1090** and **multimon-ng**
+  (which have no single official Windows binary). Pass `--no-extra` to skip.
+  All logs go to `logs/`.
 
 **3. RTL-SDR on Windows (a one-time step)**
 
@@ -333,7 +341,7 @@ python -m tetraear -f 392.225
   `install_windows.py`.
 - **MSYS2 installed but not found**: reboot and re-run the installer.
 - **Codec won't compile**: run `python install_windows.py --repair`; if it
-  persists, check `install.log`.
+  persists, check `logs/install.log`.
 - **On start: `undefined symbol: rtlsdr_set_dithering`**: same fix as Linux —
   the installer patches `pyrtlsdr`. Re-run the installer (or `--repair`).
 - **Nothing decodes, logs full of `'CaptureThread' object has no attribute
@@ -358,7 +366,7 @@ python -m tetraear -f 392.225
 
 ### If something goes wrong (both systems)
 
-1. Open (or attach) **`install.log`**, created next to the installer — it
+1. Open (or attach) **`logs/install.log`** (in the `logs/` folder) — it
    contains the full history and error details, including tracebacks of
    unexpected errors. **This is the file to send when asking for help.**
 2. Use `--repair` if the problem is only the codec or the RTL-SDR
@@ -395,8 +403,9 @@ automaticamente.
 6. Scaricano e compilano il codec vocale ETSI TETRA.
 7. Verificano che tutto sia a posto.
 
-Tutto ciò che accade viene registrato in **`install.log`**, accanto
-all'installer — allega quel file se hai bisogno di supporto.
+Tutto ciò che accade viene registrato in **`logs/install.log`** (tutti i log,
+compresi quelli dell'app, stanno nella cartella `logs/` accanto all'installer)
+— allega quel file se hai bisogno di supporto.
 
 ### Cosa ti serve
 
@@ -574,9 +583,7 @@ esce — lo script `avvia_tetraear.sh` fa esattamente questo.
 
 TetraEar decodifica il TETRA. Ma una chiavetta RTL-SDR riceve molti altri modi
 — gli stessi che programmi chiusi come OpenEar coprivano, qui però con
-strumenti **open source**. Lo script complementare `install_extra_decoders.py`
-li prepara nello stesso spirito dell'installer di TetraEar (log in
-`install_extra.log`, ogni decoder indipendente):
+strumenti **open source**:
 
 | Strumento | Cosa decodifica |
 | --- | --- |
@@ -584,8 +591,12 @@ li prepara nello stesso spirito dell'installer di TetraEar (log in
 | **dump1090** | ADS-B 1090 MHz (posizione aerei, mappa web) |
 | **dsd-fme** | DMR / P25 / NXDN / dPMR (voce digitale **in chiaro**) |
 
+**Vengono installati in automatico** al termine di `python3 install_linux.py`
+(log in `logs/install_extra.log`, ogni decoder indipendente). Usa `--no-extra`
+per saltarli, oppure rilancia lo script complementare da solo più tardi:
+
 ```bash
-python3 install_extra_decoders.py                 # installa tutti e tre
+python3 install_extra_decoders.py                 # (re)installa tutti e tre
 python3 install_extra_decoders.py --only dump1090 # solo uno (o un sottoinsieme)
 python3 install_extra_decoders.py --check         # vedi cosa è installato
 ```
@@ -643,6 +654,11 @@ servono `install_windows.bat` e `install_windows.py` nella stessa cartella.
 - Il `.bat` avvia poi `install_windows.py`, che installa **Git** e **MSYS2**
   (il compilatore C per il codec), scarica TetraEar, crea l'ambiente,
   installa i pacchetti Python e compila il codec.
+- Alla fine prepara **in automatico** anche i **decoder aggiuntivi**
+  (`install_extra_decoders_windows.py`): scarica la build Windows ufficiale di
+  **dsd-fme** e stampa i passi guidati per **dump1090** e **multimon-ng** (che
+  su Windows non hanno un binario ufficiale unico). Usa `--no-extra` per
+  saltarli. Tutti i log finiscono in `logs/`.
 
 **3. RTL-SDR su Windows (un passaggio, una volta sola)**
 
@@ -692,7 +708,7 @@ python -m tetraear -f 392.225
   `install_windows.py`.
 - **MSYS2 installato ma non trovato**: riavvia e rilancia l'installer.
 - **Il codec non compila**: esegui `python install_windows.py --repair`; se
-  persiste, controlla `install.log`.
+  persiste, controlla `logs/install.log`.
 - **All'avvio: `undefined symbol: rtlsdr_set_dithering`**: stessa soluzione di
   Linux — l'installer applica la patch a `pyrtlsdr`. Rilancia l'installer (o
   `--repair`).
@@ -719,7 +735,7 @@ python -m tetraear -f 392.225
 
 ### In caso di problemi (entrambi i sistemi)
 
-1. Apri (o allega) **`install.log`**, creato accanto all'installer: contiene
+1. Apri (o allega) **`logs/install.log`** (nella cartella `logs/`): contiene
    la cronologia completa e i dettagli degli errori, compresi i traceback
    degli errori imprevisti. **È il file da inviare per chiedere supporto.**
 2. Usa `--repair` se il problema riguarda solo il codec o la compatibilità

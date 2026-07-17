@@ -1,157 +1,128 @@
-# Guida all'uso — TetraEar e decoder aggiuntivi
+# Guida all'uso e alle impostazioni
 
-Guida pratica: quale file lanciare, e come usare ogni decoder con la chiavetta
-RTL-SDR. Per l'installazione dettagliata vedi il [README](README.md); per gli
-aspetti legali vedi il [DISCLAIMER](DISCLAIMER.md).
+Come **usare e configurare** TetraEar (e cosa ascoltare nella zona di Latina).
+L'interfaccia è **identica** su Ubuntu e Windows, quindi qui c'è **una sola
+descrizione** valida per entrambi.
 
-> ⚠️ **Usa questi strumenti solo dove consentito dalle leggi della tua
-> giurisdizione.** Ascoltare certe comunicazioni può essere illegale nel tuo
-> Paese anche se tecnicamente possibile.
+> Per **installare** e **avviare** il programma, e per scaricare i decoder
+> aggiuntivi, vedi il **[README](README.md)**. Questa guida parte dal
+> presupposto che il programma sia già installato e aperto.
+
+> ⚠️ **Nota legale (Italia).** È legale possedere un ricevitore RTL-SDR e
+> ascoltare le emissioni **pubbliche** (radio FM/DAB, segnali meteo dei
+> satelliti, ADS-B degli aerei, radioamatori). **NON è consentito** ascoltare
+> le comunicazioni di polizia, carabinieri, 112/118, forze armate e in
+> generale le comunicazioni **non destinate al pubblico** (art. 617 del Codice
+> Penale). Quelle reti sono comunque **cifrate** e non decodificabili. Usa
+> questi strumenti solo nel rispetto della legge — vedi
+> [DISCLAIMER](DISCLAIMER.md).
 
 ---
 
-## 1. Prima cosa: capire i vari file `install_*`
+## 1. Come settare il programma (TetraEar)
 
-Ogni installer fa **un solo lavoro**. Si dividono per **scopo × sistema**:
+Quando il programma è aperto vedi tre zone: in alto lo **spettro/waterfall** (la
+"cascata" colorata del segnale), al centro la **tabella dei frame** decodificati,
+in basso la **barra di stato**. Ecco i controlli che contano.
 
-| File | Cosa installa | Sistema |
+### a) Frequenza
+È l'impostazione principale: dove ti sintonizzi. La imposti nella casella
+**Frequency** (in MHz) e premi Invio, oppure la passi all'avvio. Una frequenza
+sbagliata = nessun dato: prima verifica che lì ci sia davvero traffico (vedi
+§3).
+
+### b) Guadagno (Gain)
+È la "sensibilità" del ricevitore. Parti da **Auto**; se il segnale è debole o
+la sincronizzazione è bassa, passa a **manuale** e alza il guadagno poco per
+volta (es. 30 → 40 dB). Troppo guadagno però "satura" e peggiora: cerca il
+punto in cui lo spettro è pulito e la sincronizzazione è più alta.
+
+### c) Avvio/arresto della cattura
+Il pulsante **Start/Stop** avvia o ferma la ricezione. Quando è attiva, la
+barra di stato mostra qualcosa tipo *"Signal Detected (Decoding…)"*.
+
+### d) I filtri della tabella (il motivo #1 di "non vedo niente")
+Se lo stato dice che sta decodificando ma la **tabella è vuota**, quasi sempre
+sono i filtri:
+- imposta **Filter = All / Tutti**;
+- **togli la spunta** a **"Decrypted/Text Only"**.
+Altrimenti vedi solo le righe già decifrate. Se poi i frame compaiono ma sono
+tutti con il lucchetto 🔐, il traffico è **cifrato**.
+
+### e) Ascolto audio
+Attiva il **monitor audio** (l'opzione "monitor"/altoparlante) per sentire la
+voce delle chiamate **in chiaro**. Se i frame arrivano ma non senti nulla,
+guarda il log del codec (vedi sotto): un codec che funziona scrive
+`cdecoder exited 0` / `sdecoder exited 0`.
+
+### f) Dove finiscono i log
+Tutti i log (app **e** installazione) sono nella cartella **`logs/`**. Se
+qualcosa non va, è lì che guardare (o che mi mandi): `codec_*.log`,
+`decoder_*.log`, `audio_*.log`, `tetraear_*.log`.
+
+---
+
+## 2. Perché a volte "non funziona al 100%"
+
+Non manca nessuna libreria: l'installer mette tutto. I limiti sono **fisici e
+crittografici**:
+- 🔐 **cifratura**: le reti professionali cifrano la voce; senza chiave non è
+  decodificabile da **nessun** software;
+- 📻 **frequenza**: un portante continuo è spesso un *canale di controllo*, non
+  una voce; la voce c'è solo durante una chiamata reale;
+- 📶 **segnale**: antenna/guadagno insufficienti → frame persi.
+
+Il "100%" si ottiene sul traffico **in chiaro**, sulla frequenza giusta, con
+buon segnale.
+
+---
+
+## 3. Cosa ascoltare nella zona di Latina e provincia
+
+Queste sono emissioni **pubbliche e legali**, ricevibili con una chiavetta
+RTL-SDR e l'antenna in dotazione (per alcune serve un'antenna migliore). Le
+frequenze "fisse" valgono ovunque, Latina compresa; per quelle **locali** ti
+indico dove trovarle, perché cambiano da zona a zona e non vanno inventate.
+
+| Cosa | Frequenza | Programma | Note |
+| --- | --- | --- | --- |
+| **Aerei (ADS-B)** | **1090 MHz** (fissa) | `dump1090` | Posizione/quota degli aerei su mappa. Latina è sotto le rotte di Roma/Fiumicino-Ciampino: ne vedi molti. |
+| **Satelliti meteo NOAA** | 137.100 / 137.620 / 137.9125 MHz | SDR + wxtoimg/satdump | Immagini meteo dai satelliti in transito. Serve antenna adatta (V-dipolo/QFH). |
+| **Stazione Spaziale (ISS)** | 145.800 MHz (voce/SSTV) · 145.825 (APRS) | qualsiasi SDR FM | Quando passa sopra di te. |
+| **Radioamatori 2 m** | 144–146 MHz (chiamata FM 145.500) | qualsiasi SDR FM | Banda amatoriale, aperta all'ascolto. |
+| **Radioamatori 70 cm** | 430–440 MHz | qualsiasi SDR FM | Include ripetitori locali. |
+| **PMR446 (walkie-talkie liberi)** | 446.00625–446.19375 MHz (canali 1–16) | qualsiasi SDR FM | Ricetrasmittenti senza licenza. |
+| **Radio FM commerciali** | 87.5–108 MHz | qualsiasi SDR WFM | Le emittenti locali di Latina. |
+| **DAB+ (radio digitale)** | ~174–230 MHz (Banda III) | welle.io / SDR DAB | Multiplex nazionali/regionali. |
+
+**Frequenze locali (FM, ripetitori radioamatoriali di Latina):** non le elenco a
+memoria per non darti numeri sbagliati. Le trovi qui:
+- **[RadioReference](https://www.radioreference.com/)** — database mondiale per
+  zona.
+- **Lista ripetitori ARI** (Associazione Radioamatori Italiani) per il Lazio.
+- Un programma a **spettro** (`gqrx` su Linux, **SDR#**/**SDR++** su Windows) per
+  "vedere" dove c'è portante e capire il modo prima di puntarci un decoder.
+
+> ❌ **Fuori lista (per legge):** polizia, carabinieri, 112/118, vigili del
+> fuoco, forze armate, TETRA SATER. Sono cifrate e l'ascolto è vietato in
+> Italia. Non vanno inserite.
+
+---
+
+## 4. I decoder aggiuntivi (cosa fanno)
+
+Insieme a TetraEar l'installer prepara **in automatico** anche questi decoder
+per gli altri modi (vedi README per install e dettagli):
+
+| Decoder | Modi | Frequenze tipiche |
 | --- | --- | --- |
-| `install_linux.py` | **TetraEar** (decoder TETRA) | Linux |
-| `install_windows.py` | **TetraEar** (decoder TETRA) | Windows |
-| `install_extra_decoders.py` | **decoder extra** (DMR/P25, ADS-B, cercapersone) | Linux |
-| `install_extra_decoders_windows.py` | **decoder extra** | Windows |
+| **dsd-fme** | DMR / P25 / NXDN / dPMR (voce digitale **in chiaro**) | 430–440 MHz (amatoriale), 446 MHz |
+| **dump1090** | ADS-B aerei | 1090 MHz |
+| **multimon-ng** | POCSAG/FLEX (cercapersone) e altri FSK | dove ancora in uso e consentito |
 
-Non sono doppioni: TetraEar decodifica **solo il TETRA**; gli "extra decoders"
-coprono **altri modi radio**. Installa quello che ti serve.
-
-> 💡 Una regola sola non basta per "sentire tutto": ogni modo radio (TETRA,
-> DMR, ADS-B, cercapersone) usa frequenze e formati diversi, quindi serve il
-> decoder giusto per ciascuno.
+I comandi d'uso pratici di ciascuno sono nel **[README](README.md)** (sezione
+"decoder aggiuntivi").
 
 ---
 
-## 2. La verità sul "funziona al 100%"
-
-Non manca nessuna libreria: gli installer mettono tutto il necessario. I limiti
-sono **fisici e crittografici**, non di software:
-
-- 🔐 **Cifratura.** Molte reti (TETRA TEA1–4, DMR/P25 con chiavi) cifrano la
-  voce. **Senza la chiave non è decodificabile da nessun software.** La vedi
-  come traffico presente ma muto.
-- 📻 **Frequenza giusta e chiamata reale.** Un portante continuo di solito è un
-  *canale di controllo*: la voce compare solo durante una chiamata vera.
-- 📶 **Segnale.** Guadagno/antenna insufficienti → poca sincronizzazione →
-  frame persi.
-
-Quindi il "100%" si raggiunge sul traffico **in chiaro**, sulla frequenza
-giusta, con buon segnale.
-
----
-
-## 3. TETRA — con TetraEar
-
-**Linux**
-
-```bash
-cd ~/TetraEarUbuntu/TetraEar
-source .venv/bin/activate
-python -m tetraear -f 392.225          # sostituisci con la tua frequenza in MHz
-```
-
-**Windows**
-
-```bat
-cd TetraEar
-.venv\Scripts\activate
-python -m tetraear -f 392.225
-```
-
-Oppure doppio clic su **`Avvia TetraEar.vbs`** (Windows) o sull'icona
-**TetraEar** (Linux).
-
-**Se la tabella dei frame è vuota:** metti **Filter = All** e togli la spunta a
-**"Decrypted/Text Only"**. Se poi i frame compaiono tutti con 🔐, il traffico è
-cifrato (contatore chiavi `0/0` = nessuna chiave) e la voce non è recuperabile.
-
----
-
-## 4. Decoder aggiuntivi
-
-Prima di tutto: la chiavetta va **libera dai driver DVB-T** (su Linux
-l'installer lo fa; su Windows serve il driver **WinUSB** installato una volta
-con [Zadig](https://zadig.akeo.ie/)).
-
-Su Linux i comandi usano `rtl_fm` (incluso nel pacchetto `rtl-sdr`) che manda
-l'audio "in pipe" al decoder. Cambia **frequenza** (`-f`) e **guadagno** (`-g`)
-in base alla tua zona.
-
-### 4.1 DMR / P25 / NXDN / dPMR — `dsd-fme`
-
-Voce digitale professionale/amatoriale **in chiaro**.
-
-**Linux**
-```bash
-rtl_fm -f 446.09375M -s 48000 -g 42 - | dsd-fme -i - -o /dev/null
-```
-
-**Windows** — usa l'eseguibile scaricato in `decoders\dsd-fme\`:
-```bat
-rtl_fm -f 446.09375M -s 48000 -g 42 - | dsd-fme.exe -i - -o NUL
-```
-
-> `dsd-fme` mostra a schermo tipo di rete, talkgroup e ID. Le chiamate cifrate
-> restano mute (te lo segnala).
-
-### 4.2 ADS-B (aerei) — `dump1090`
-
-Posizione, quota e codice degli aerei a **1090 MHz** (frequenza fissa).
-
-**Linux / Windows**
-```bash
-dump1090 --interactive --net
-```
-Poi apri il browser su **http://localhost:8080** per la mappa. Non serve
-antenna speciale: anche quella in dotazione vede gli aerei vicini.
-
-### 4.3 Cercapersone POCSAG / FLEX — `multimon-ng`
-
-Messaggi di testo dei sistemi di paging (dove ancora in uso e consentito).
-
-**Linux**
-```bash
-rtl_fm -f 439.9875M -s 22050 -g 42 - | \
-  multimon-ng -t raw -a POCSAG512 -a POCSAG1200 -a POCSAG2400 -f alpha /dev/stdin
-```
-
-**Windows** (multimon-ng compilato con MSYS2, vedi README) oppure il programma
-**PDW**:
-```bat
-rtl_fm -f 439.9875M -s 22050 -g 42 - | multimon-ng.exe -t raw -a POCSAG1200 -f alpha -
-```
-
----
-
-## 5. Come trovare le frequenze giuste
-
-I comandi sopra usano frequenze **di esempio**: non è detto che nella tua zona
-ci sia traffico lì. Per trovare le frequenze attive:
-
-- Un database pubblico come [RadioReference](https://www.radioreference.com/) o
-  siti/forum locali.
-- Uno **spettro** (es. l'app `gqrx` su Linux, o SDR#/SDR++ su Windows) per
-  "vedere" dove c'è portante e capire il modo.
-
----
-
-## 6. Riepilogo comandi di verifica
-
-| Vuoi sapere se… | Comando |
-| --- | --- |
-| TetraEar è installato bene | `python3 install_linux.py --check` |
-| i decoder extra ci sono (Linux) | `python3 install_extra_decoders.py --check` |
-| i decoder extra ci sono (Windows) | `python install_extra_decoders_windows.py --check` |
-| la chiavetta è vista (Linux) | `rtl_test -t` |
-
----
-
-<p align="center"><sub>Usa questi strumenti solo nel rispetto delle leggi vigenti — vedi <a href="DISCLAIMER.md">DISCLAIMER</a>.</sub></p>
+<p align="center"><sub>Ascolta solo emissioni pubbliche e nel rispetto della legge — vedi <a href="DISCLAIMER.md">DISCLAIMER</a>.</sub></p>

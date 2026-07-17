@@ -49,7 +49,9 @@ MIN_PYTHON = (3, 8)
 SUPPORTED_OS_IDS = {"ubuntu", "debian"}
 
 INSTALLER_DIR = Path(__file__).resolve().parent
-LOG_FILE = INSTALLER_DIR / "install_extra.log"
+# Tutti i log (installazione compresa) finiscono in ./logs/ accanto allo script.
+LOG_DIR = INSTALLER_DIR / "logs"
+LOG_FILE = LOG_DIR / "install_extra.log"
 
 # I binari compilati che NON si installano di sistema vengono messi qui, cosi'
 # restano raccolti in un posto solo accanto all'installer.
@@ -85,6 +87,7 @@ def setup_logging() -> None:
     logger.addHandler(console)
 
     try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
         file_handler = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s"))
