@@ -154,6 +154,17 @@ through — the `avvia_tetraear.sh` script does exactly this.
 | `python3 install_linux.py` | Full installation |
 | `python3 install_linux.py --repair` | Recompile only the voice codec + re-apply fixes |
 | `python3 install_linux.py --uninstall` | Remove `.venv` and the codec (keeps the source) |
+| `python3 install_linux.py --check` | Verify the installation (venv, codec, pyrtlsdr) without changing anything |
+| `python3 install_linux.py --ref <commit\|tag\|branch>` | Install a specific TetraEar version |
+
+> ℹ️ **Reproducible installs.** The installer pins TetraEar to a known,
+> tested release (currently `v2.3`) instead of always pulling the latest
+> `master`, so an upstream change can't silently break the patches it
+> applies. The exact installed commit is recorded in
+> `TetraEar/.tetraear_version`. To install a different version, use `--ref`
+> (or set the `TETRAEAR_REF` environment variable). The ETSI voice codec is
+> downloaded from ETSI with an automatic archive.org fallback if the ETSI
+> site is unreachable; the download is always MD5-verified.
 
 **5. Troubleshooting (Linux)**
 
@@ -264,6 +275,14 @@ python -m tetraear -f 392.225
 | double-click `install_windows.bat` | Full installation |
 | `python install_windows.py --repair` | Recompile only the voice codec + re-apply fixes |
 | `python install_windows.py --uninstall` | Remove `.venv` and the codec (keeps the source) |
+| `python install_windows.py --check` | Verify the installation (venv, codec, rtlsdr.dll) without changing anything |
+| `python install_windows.py --ref <commit\|tag\|branch>` | Install a specific TetraEar version |
+
+> ℹ️ **Reproducible installs.** Same as Linux: TetraEar is pinned to a known,
+> tested release (currently `v2.3`), the installed commit is recorded in
+> `TetraEar\.tetraear_version`, and the ETSI codec download has an
+> archive.org fallback and is MD5-verified. Use `--ref` or the `TETRAEAR_REF`
+> environment variable to install a different version.
 
 **6. Troubleshooting (Windows)**
 
@@ -450,6 +469,17 @@ esce — lo script `avvia_tetraear.sh` fa esattamente questo.
 | `python3 install_linux.py` | Installazione completa |
 | `python3 install_linux.py --repair` | Ricompila solo il codec vocale + riapplica le correzioni |
 | `python3 install_linux.py --uninstall` | Rimuove `.venv` e il codec (lascia il sorgente) |
+| `python3 install_linux.py --check` | Verifica l'installazione (venv, codec, pyrtlsdr) senza modificare nulla |
+| `python3 install_linux.py --ref <commit\|tag\|branch>` | Installa una versione specifica di TetraEar |
+
+> ℹ️ **Installazioni riproducibili.** L'installer fissa TetraEar a una release
+> nota e testata (attualmente `v2.3`) invece di prendere sempre l'ultimo
+> `master`, così un cambiamento a monte non può rompere di nascosto le patch
+> applicate. Il commit esatto installato è registrato in
+> `TetraEar/.tetraear_version`. Per installare una versione diversa usa
+> `--ref` (o la variabile d'ambiente `TETRAEAR_REF`). Il codec vocale ETSI
+> viene scaricato da ETSI con fallback automatico su archive.org se il sito
+> ETSI è irraggiungibile; il download è sempre verificato con MD5.
 
 **5. Problemi comuni (Linux)**
 
@@ -562,6 +592,14 @@ python -m tetraear -f 392.225
 | doppio clic su `install_windows.bat` | Installazione completa |
 | `python install_windows.py --repair` | Ricompila solo il codec vocale + riapplica le correzioni |
 | `python install_windows.py --uninstall` | Rimuove `.venv` e il codec (lascia il sorgente) |
+| `python install_windows.py --check` | Verifica l'installazione (venv, codec, rtlsdr.dll) senza modificare nulla |
+| `python install_windows.py --ref <commit\|tag\|branch>` | Installa una versione specifica di TetraEar |
+
+> ℹ️ **Installazioni riproducibili.** Come su Linux: TetraEar è fissato a una
+> release nota e testata (attualmente `v2.3`), il commit installato è
+> registrato in `TetraEar\.tetraear_version`, e il download del codec ETSI ha
+> un fallback su archive.org ed è verificato con MD5. Usa `--ref` o la
+> variabile d'ambiente `TETRAEAR_REF` per installare una versione diversa.
 
 **6. Problemi comuni (Windows)**
 

@@ -48,7 +48,7 @@ from pathlib import Path
 # CONFIGURAZIONE
 # ============================================================
 
-SCRIPT_VERSION = "1.3"
+SCRIPT_VERSION = "1.4"
 MIN_PYTHON = (3, 8)
 SUPPORTED_OS_IDS = {"ubuntu", "debian"}
 
@@ -56,6 +56,20 @@ SUPPORTED_OS_IDS = {"ubuntu", "debian"}
 # script non viene lanciato da dentro una copia gia' clonata, provvede
 # a scaricarlo da qui automaticamente.
 TETRAEAR_REPO_URL = "https://github.com/syrex1013/TetraEar.git"
+
+# Versione di TetraEar da installare. Per default fissiamo un commit noto e
+# testato (release v2.3), cosi' l'installazione e' RIPRODUCIBILE: un
+# cambiamento a monte del progetto non puo' rompere di sorpresa le patch che
+# questo installer applica. Per prendere comunque l'ultimo codice, impostare
+# la variabile d'ambiente TETRAEAR_REF (a un commit, tag o branch, es.
+# "master") oppure passare --ref sulla riga di comando.
+TETRAEAR_DEFAULT_REF = "c46141a62c5aec1a68ea7e3c1c570bcf461833e5"  # release v2.3
+# Valore effettivo usato a runtime: viene sovrascritto da resolve_tetraear_ref()
+# leggendo prima --ref, poi la variabile d'ambiente, poi il default qui sopra.
+TETRAEAR_REF = TETRAEAR_DEFAULT_REF
+# File in cui registriamo il commit esatto installato: rende l'installazione
+# verificabile a posteriori (utile per il supporto e per --check).
+TETRAEAR_VERSION_FILE = ".tetraear_version"
 
 # Cartella dove si trova QUESTO script.
 INSTALLER_DIR = Path(__file__).resolve().parent
@@ -78,6 +92,16 @@ ETSI_CODEC_URL = (
     "01.03.01_60/en_30039502v010301p0.zip"
 )
 ETSI_CODEC_MD5 = "a8115fe68ef8f8cc466f4192572a1e3e"
+
+# Il sito ETSI e' a volte irraggiungibile o risponde 403. Come riserva usiamo
+# la copia archiviata dalla Wayback Machine di archive.org (stesso identico
+# file). Il download prova le fonti in ordine e si ferma alla prima che
+# funziona; il checksum MD5 qui sopra garantisce comunque che qualunque fonte
+# serva ESATTAMENTE lo stesso archivio, quindi aggiungere mirror e' sicuro.
+ETSI_CODEC_URLS = [
+    ETSI_CODEC_URL,
+    "https://web.archive.org/web/2id_/" + ETSI_CODEC_URL,
+]
 
 # ETSI blocca le richieste che non sembrano provenire da un browser
 # (risposta 403 "bot detection"). Un User-Agent realistico risolve il problema.
@@ -304,8 +328,7 @@ def ensure_tetraear_source(clone_if_missing: bool = True) -> Path:
         logger.info("Rimuovo una copia incompleta preesistente: %s", cloned_dir)
         shutil.rmtree(cloned_dir, ignore_errors=True)
 
-    logger.info("Clono %s in %s ...", TETRAEAR_REPO_URL, cloned_dir)
-    run(["git", "clone", "--depth", "1", TETRAEAR_REPO_URL, str(cloned_dir)])
+    _clone_tetraear_pinned(TETRAEAR_REPO_URL, TETRAEAR_REF, cloned_dir)
 
     if not _looks_like_tetraear_root(cloned_dir):
         fail(
@@ -316,6 +339,50 @@ def ensure_tetraear_source(clone_if_missing: bool = True) -> Path:
     logger.info("[OK] Sorgente di TetraEar scaricato in %s", cloned_dir)
     configure_paths(cloned_dir)
     return cloned_dir
+
+
+def _clone_tetraear_pinned(repo_url: str, ref: str, dest: Path) -> None:
+    """
+    Clona TetraEar fissando ESATTAMENTE il commit/ref richiesto, cosi'
+    l'installazione e' riproducibile: due installazioni con lo stesso `ref`
+    ottengono lo stesso codice, e un cambiamento a monte non puo' rompere di
+    sorpresa le patch applicate da questo installer.
+
+    Strategia: prima si prova un fetch shallow (--depth 1) del ref specifico
+    (funziona per branch, tag e, sui server che lo permettono, anche per SHA);
+    se non riesce, si ripiega su un clone completo + checkout, che gestisce
+    qualunque SHA anche sui server che non consentono il fetch per commit.
+    Il commit risolto viene registrato in TETRAEAR_VERSION_FILE.
+    """
+    dest_str = str(dest)
+    logger.info("Scarico TetraEar da %s (versione fissata: %s) ...", repo_url, ref)
+
+    run(["git", "init", "-q", dest_str])
+    run(["git", "-C", dest_str, "remote", "add", "origin", repo_url])
+
+    fetched = run(
+        ["git", "-C", dest_str, "fetch", "--depth", "1", "origin", ref],
+        check=False,
+    )
+    if fetched.returncode == 0:
+        run(["git", "-C", dest_str, "checkout", "-q", "FETCH_HEAD"])
+    else:
+        logger.info(
+            "Fetch shallow del ref non riuscito (il server potrebbe non "
+            "permettere il fetch per commit): provo un clone completo..."
+        )
+        shutil.rmtree(dest, ignore_errors=True)
+        run(["git", "clone", repo_url, dest_str])
+        run(["git", "-C", dest_str, "checkout", "-q", ref])
+
+    resolved = run(["git", "-C", dest_str, "rev-parse", "HEAD"], check=False)
+    if resolved.returncode == 0:
+        sha = resolved.stdout.strip()
+        logger.info("[OK] TetraEar fissato al commit %s", sha)
+        try:
+            (dest / TETRAEAR_VERSION_FILE).write_text(sha + "\n", encoding="utf-8")
+        except OSError:
+            pass
 
 
 # ============================================================
@@ -679,24 +746,42 @@ def create_virtualenv_and_install_requirements() -> None:
 
 def _download_with_browser_headers(url: str, destination: Path) -> None:
     """
-    Scarica un file impostando un User-Agent "da browser". Il sito ETSI
-    risponde 403 (bot detection) alle richieste che sembrano provenire
-    da script automatici, quindi urllib.request.urlretrieve() da solo
-    non basta: serve costruire manualmente la richiesta con gli header.
+    Scarica un singolo file impostando un User-Agent "da browser". Il sito
+    ETSI risponde 403 (bot detection) alle richieste che sembrano provenire
+    da script automatici, quindi urllib.request.urlretrieve() da solo non
+    basta: serve costruire manualmente la richiesta con gli header.
+
+    Solleva l'eccezione originale in caso di errore: e' il chiamante a
+    decidere se provare un mirror alternativo o fermarsi.
     """
     request = urllib.request.Request(url, headers={"User-Agent": DOWNLOAD_USER_AGENT})
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response, open(destination, "wb") as out_file:
-            shutil.copyfileobj(response, out_file)
-    except urllib.error.HTTPError as exc:
-        fail(
-            f"Download fallito ({exc.code} {exc.reason}) da {url}. "
-            "Se il problema persiste, l'URL potrebbe essere cambiato: "
-            "verificare manualmente sul sito ETSI e aggiornare ETSI_CODEC_URL "
-            "in cima a questo script."
-        )
-    except urllib.error.URLError as exc:
-        fail(f"Download fallito: impossibile raggiungere {url} ({exc.reason}).")
+    with urllib.request.urlopen(request, timeout=60) as response, open(destination, "wb") as out_file:
+        shutil.copyfileobj(response, out_file)
+
+
+def _download_first_available(urls: list, destination: Path) -> None:
+    """
+    Scarica da una lista di URL (fonte primaria + mirror di riserva),
+    fermandosi al primo che risponde. Il checksum viene verificato a parte
+    dal chiamante, quindi qualunque mirror serva un file diverso verra'
+    comunque scartato dopo.
+    """
+    last_error = None
+    for index, url in enumerate(urls, start=1):
+        logger.info("Scarico (fonte %d/%d): %s", index, len(urls), url)
+        try:
+            _download_with_browser_headers(url, destination)
+            return
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError, TimeoutError) as exc:
+            last_error = exc
+            logger.warning("Fonte non raggiungibile (%s), provo la successiva...", exc)
+
+    fail(
+        "Download del codec fallito da tutte le fonti disponibili (ETSI e mirror). "
+        f"Ultimo errore: {last_error}. Il sito ETSI e' a volte irraggiungibile: "
+        "riprova piu' tardi con 'python3 install_linux.py --repair'. Se l'URL e' "
+        "cambiato in modo permanente, aggiornare ETSI_CODEC_URL in cima a questo script."
+    )
 
 
 def _verify_checksum(file_path: Path, expected_md5: str) -> None:
@@ -871,7 +956,7 @@ def install_tetra_codec(fallback_only: bool = False) -> None:
     try:
         zip_path = work_dir / "etsi_codec.zip"
         logger.info("Scarico il codec da ETSI...")
-        _download_with_browser_headers(ETSI_CODEC_URL, zip_path)
+        _download_first_available(ETSI_CODEC_URLS, zip_path)
 
         logger.info("Verifico il checksum del file scaricato...")
         _verify_checksum(zip_path, ETSI_CODEC_MD5)
@@ -1623,7 +1708,57 @@ def parse_args() -> argparse.Namespace:
         "--uninstall", action="store_true",
         help="Rimuove il virtual environment e il codec compilato",
     )
+    group.add_argument(
+        "--check", action="store_true",
+        help="Verifica soltanto lo stato dell'installazione, senza modificare nulla",
+    )
+    parser.add_argument(
+        "--ref", metavar="COMMIT|TAG|BRANCH", default=None,
+        help=(
+            "Versione di TetraEar da installare (commit, tag o branch). "
+            "Ha la precedenza sulla variabile d'ambiente TETRAEAR_REF. Se "
+            "omessa, si usa la versione fissata e testata (release v2.3)."
+        ),
+    )
     return parser.parse_args()
+
+
+def resolve_tetraear_ref(cli_ref: str | None) -> str:
+    """
+    Determina quale versione di TetraEar installare, in ordine di priorita':
+      1. --ref sulla riga di comando
+      2. variabile d'ambiente TETRAEAR_REF
+      3. il commit fissato e testato (TETRAEAR_DEFAULT_REF)
+    Aggiorna la variabile globale usata dal clone.
+    """
+    global TETRAEAR_REF
+    env_ref = os.environ.get("TETRAEAR_REF", "").strip()
+    TETRAEAR_REF = (cli_ref or "").strip() or env_ref or TETRAEAR_DEFAULT_REF
+    if TETRAEAR_REF == TETRAEAR_DEFAULT_REF:
+        logger.info("Versione TetraEar: %s (fissata, release v2.3)", TETRAEAR_REF)
+    else:
+        logger.info("Versione TetraEar: %s (richiesta dall'utente)", TETRAEAR_REF)
+    return TETRAEAR_REF
+
+
+def do_check() -> None:
+    """
+    Modalita' di sola diagnostica: non installa e non modifica nulla, si
+    limita a localizzare il sorgente gia' presente e a rieseguire i
+    controlli finali (venv, binari del codec, import di pyrtlsdr, chiavetta).
+    Utile per capire cosa manca senza rilanciare l'intera installazione.
+    """
+    step("Modalita' --check: verifica dello stato dell'installazione")
+    root = ensure_tetraear_source(clone_if_missing=False)
+    if not _looks_like_tetraear_root(root):
+        fail(
+            "Sorgente di TetraEar non trovato: sembra che l'installazione non "
+            "sia mai stata completata. Esegui 'python3 install_linux.py'."
+        )
+    version_file = root / TETRAEAR_VERSION_FILE
+    if version_file.is_file():
+        logger.info("Versione installata (commit): %s", version_file.read_text().strip())
+    verify_installation()
 
 
 def main() -> int:
@@ -1638,8 +1773,13 @@ def main() -> int:
             do_uninstall()
             return 0
 
+        if args.check:
+            do_check()
+            return 0
+
         check_python_version()
         check_operating_system()
+        resolve_tetraear_ref(args.ref)
 
         if args.repair:
             do_repair()
