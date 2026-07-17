@@ -196,6 +196,30 @@ def _apt_install(packages: list) -> None:
     run(["apt-get", "install", "-y"] + packages, sudo=True)
 
 
+def _ensure_command(cmd_name: str, apt_package: str) -> bool:
+    """
+    Verifica che un comando sia DAVVERO eseguibile (non basta che apt lo dia
+    per installato: su alcuni sistemi/immagini il pacchetto risulta installato
+    ma il binario non e' nel PATH). Se manca, prova una reinstallazione forzata
+    e, se ancora assente, spiega chiaramente cosa fare.
+    """
+    if shutil.which(cmd_name):
+        return True
+    logger.warning(
+        "[ATTENZIONE] '%s' non e' nel PATH anche se apt lo dava installato: "
+        "provo a reinstallare '%s'...", cmd_name, apt_package,
+    )
+    run(["apt-get", "install", "--reinstall", "-y", apt_package], sudo=True, check=False)
+    if shutil.which(cmd_name):
+        logger.info("[OK] '%s' ora e' disponibile.", cmd_name)
+        return True
+    logger.error(
+        "[FALLITO] '%s' non e' disponibile. Installalo a mano con "
+        "'sudo apt install %s' e rilancia l'installer.", cmd_name, apt_package,
+    )
+    return False
+
+
 def _install_local_binary(built_path: Path, name: str) -> Path:
     """Copia un binario compilato in decoders/bin/ e prova a metterlo anche in
     /usr/local/bin (best effort) cosi' e' subito richiamabile dal PATH."""
@@ -293,6 +317,11 @@ def _build_and_install_cmake(repo_url: str, name: str, extra_cmake: list | None 
 
 def install_dsd_fme() -> bool:
     step("dsd-fme (voce digitale in chiaro: DMR / P25 / NXDN / dPMR)")
+    # dsd-fme si compila con cmake: verifichiamo che sia DAVVERO eseguibile
+    # (su alcuni sistemi apt lo da' installato ma il binario non c'e').
+    if not _ensure_command("cmake", "cmake"):
+        logger.warning("[ATTENZIONE] Salto dsd-fme: manca 'cmake'.")
+        return False
     # dsd-fme dipende dalla libreria mbelib (vocoder AMBE) e da alcune -dev.
     _apt_install([
         "libsndfile1-dev", "libitpp-dev", "libncurses-dev", "libpulse-dev",
