@@ -55,7 +55,9 @@ SCRIPT_VERSION = "1.0"
 MIN_PYTHON = (3, 8)
 
 INSTALLER_DIR = Path(__file__).resolve().parent
-LOG_FILE = INSTALLER_DIR / "install_extra.log"
+# Tutti i log (installazione compresa) finiscono in ./logs/ accanto allo script.
+LOG_DIR = INSTALLER_DIR / "logs"
+LOG_FILE = LOG_DIR / "install_extra.log"
 
 # Cartella dove estraiamo i decoder scaricati, accanto all'installer.
 DECODERS_DIR = INSTALLER_DIR / "decoders"
@@ -87,6 +89,7 @@ def setup_logging() -> None:
     console.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(console)
     try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
         fh = logging.FileHandler(LOG_FILE, mode="w", encoding="utf-8")
         fh.setLevel(logging.DEBUG)
         fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)-7s %(message)s"))

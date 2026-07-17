@@ -73,7 +73,9 @@ TETRAEAR_VERSION_FILE = ".tetraear_version"
 
 # Cartella dove si trova QUESTO script.
 INSTALLER_DIR = Path(__file__).resolve().parent
-LOG_FILE = INSTALLER_DIR / "install.log"
+# Tutti i log (installazione compresa) finiscono in ./logs/ accanto allo script.
+LOG_DIR = INSTALLER_DIR / "logs"
+LOG_FILE = LOG_DIR / "install.log"
 
 # I percorsi che dipendono dalla posizione del sorgente di TetraEar
 # vengono impostati a runtime da configure_paths(), dopo aver localizzato
@@ -184,6 +186,7 @@ _console_handler = logging.StreamHandler(sys.stdout)
 _console_handler.setLevel(logging.INFO)
 _console_handler.setFormatter(logging.Formatter("%(message)s"))
 
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 _file_handler = logging.FileHandler(LOG_FILE, mode="a", encoding="utf-8")
 _file_handler.setLevel(logging.DEBUG)
 _file_handler.setFormatter(
@@ -1695,6 +1698,32 @@ def do_uninstall() -> None:
 # MAIN
 # ============================================================
 
+def run_extra_decoders(skip: bool) -> None:
+    """
+    Avvia in AUTOMATICO l'installer dei decoder aggiuntivi (DMR/P25, ADS-B,
+    cercapersone), se presente accanto a questo script. E' best-effort: viene
+    eseguito DOPO che TetraEar e' gia' installato e verificato, quindi un
+    eventuale errore qui non compromette TetraEar. Si disattiva con --no-extra.
+    """
+    script = INSTALLER_DIR / "install_extra_decoders.py"
+    if skip:
+        logger.info("[INFO] Decoder aggiuntivi saltati (--no-extra).")
+        return
+    if not script.is_file():
+        return
+
+    step("Installo anche i decoder aggiuntivi (DMR/P25, ADS-B, cercapersone)")
+    logger.info("Avvio %s (log in logs/install_extra.log) ...", script.name)
+    # Output "dal vivo" (niente cattura): la compilazione puo' durare minuti.
+    result = subprocess.run([sys.executable, str(script)])
+    if result.returncode != 0:
+        logger.warning(
+            "[ATTENZIONE] L'installazione di uno o piu' decoder aggiuntivi non e' "
+            "andata a buon fine (vedi logs/install_extra.log). TetraEar resta "
+            "comunque installato e funzionante."
+        )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Installer TetraEar per Linux (Ubuntu 24.04 / Debian 12)"
@@ -1719,6 +1748,10 @@ def parse_args() -> argparse.Namespace:
             "Ha la precedenza sulla variabile d'ambiente TETRAEAR_REF. Se "
             "omessa, si usa la versione fissata e testata (release v2.3)."
         ),
+    )
+    parser.add_argument(
+        "--no-extra", action="store_true",
+        help="Non installare automaticamente i decoder aggiuntivi (DMR/P25, ADS-B, cercapersone)",
     )
     return parser.parse_args()
 
@@ -1798,6 +1831,8 @@ def main() -> int:
         install_tetra_codec_with_fallback()
         create_launchers()
         verify_installation()
+        # TetraEar e' pronto: installo anche gli altri decoder in automatico.
+        run_extra_decoders(args.no_extra)
         return 0
 
     except InstallError:
