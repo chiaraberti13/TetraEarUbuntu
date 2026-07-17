@@ -251,8 +251,8 @@ rtl_fm -f 446.09375M -s 48000 -g 42 - | dsd-fme -i - -o /dev/null
 > keys — by any software. Use only where permitted by law (see
 > [DISCLAIMER](DISCLAIMER.md)).
 
-📖 Full step-by-step usage (frequencies, commands, Windows notes) is in
-**[guida.md](guida.md)**. On Windows use `install_extra_decoders_windows.py`.
+📖 Full step-by-step usage (frequencies, commands, Windows notes) is in the
+sections below. On Windows use `install_extra_decoders_windows.py`.
 
 ---
 
@@ -618,8 +618,8 @@ rtl_fm -f 446.09375M -s 48000 -g 42 - | dsd-fme -i - -o /dev/null
 > chiavi — da nessun software. Usa solo dove consentito dalla legge (vedi
 > [DISCLAIMER](DISCLAIMER.md)).
 
-📖 La guida d'uso completa (frequenze, comandi, note per Windows) è in
-**[guida.md](guida.md)**. Su Windows usa `install_extra_decoders_windows.py`.
+📖 La guida d'uso completa (frequenze, comandi, note per Windows) è nelle
+sezioni seguenti. Su Windows usa `install_extra_decoders_windows.py`.
 
 ---
 
