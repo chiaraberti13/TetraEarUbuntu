@@ -21,7 +21,7 @@ Windows l'ecosistema e' diverso:
   - dump1090 e multimon-ng NON hanno un singolo binario Windows ufficiale
     affidabile. Per sicurezza questo installer NON scarica ne' esegue .exe di
     terzi non verificati: stampa invece i passi guidati con i link corretti
-    (gli stessi riportati in guida.md).
+    (gli stessi riportati in README.md).
 
 Uso:
     python install_extra_decoders_windows.py            # dsd-fme + istruzioni
@@ -29,7 +29,7 @@ Uso:
 
 NOTA: questo script NON e' stato testato su Windows reale (l'ambiente di
 sviluppo e' Linux). E' scritto per essere prudente e non distruttivo; se
-qualcosa non torna, i binari e i link ufficiali sono comunque in guida.md.
+qualcosa non torna, i binari e i link ufficiali sono comunque in README.md.
 
 DISCLAIMER: usa questi strumenti solo dove consentito dalle leggi della tua
 giurisdizione. Vedi DISCLAIMER.md.
@@ -279,18 +279,44 @@ def _present(name: str) -> bool:
     return _find_file(DECODERS_DIR, name + ".exe") is not None
 
 
-def verify_and_summary(selected: list) -> None:
+def _tetraear_root() -> Path:
+    """Individua la copia di TetraEar con la stessa logica di install_windows.py:
+    lo script e' dentro una copia di TetraEar, oppure c'e' .\\TetraEar accanto."""
+    if (INSTALLER_DIR / "requirements.txt").is_file() and (INSTALLER_DIR / "tetraear").is_dir():
+        return INSTALLER_DIR
+    return INSTALLER_DIR / "TetraEar"
+
+
+def verify_and_summary(selected: list, completed_install: bool = True) -> None:
     step("Riepilogo")
     for name in selected:
         logger.info("  %s %s", "[PRONTO]" if _present(name) else "[DA FARE]", name)
+
+    # Riquadro finale di fine installazione (non in modalita' --check, dove
+    # non e' stato scaricato nulla).
+    if completed_install:
+        root = _tetraear_root()
+        logger.info("")
+        logger.info("========================================================")
+        logger.info(" Installazione completata con successo!")
+        logger.info("")
+        logger.info(" Per avviare TetraEar SENZA terminale:")
+        logger.info("   doppio clic su 'Avvia TetraEar.vbs' (nella cartella TetraEar o sul Desktop)")
+        logger.info("")
+        logger.info(" Oppure da Prompt dei comandi:")
+        logger.info("   cd %s", root)
+        logger.info(r"   .venv\Scripts\activate")
+        logger.info("   python -m tetraear -f 392.225")
+        logger.info("========================================================")
+
     logger.info("")
     logger.info("Cartella dei decoder: %s", DECODERS_DIR)
-    logger.info("Guida d'uso completa: guida.md")
+    logger.info("Guida d'uso completa: README.md")
     logger.info("Log: %s", LOG_FILE)
     logger.info("")
     logger.warning(
         "[IMPORTANTE] Come per TetraEar, su Windows serve il driver WinUSB della\n"
-        "chiavetta installato con Zadig (una volta sola). Vedi README.md / guida.md."
+        "chiavetta installato con Zadig (una volta sola). Vedi README.md."
     )
 
 
@@ -318,7 +344,7 @@ def main() -> int:
     logger.info("Decoder richiesti: %s", ", ".join(selected))
 
     if args.check:
-        verify_and_summary(selected)
+        verify_and_summary(selected, completed_install=False)
         return 0
 
     check_python_version()

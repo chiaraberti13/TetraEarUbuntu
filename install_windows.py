@@ -241,6 +241,66 @@ def configure_paths(root: Path) -> None:
     CODEC_BIN_DIR = CODEC_BASE_DIR / "bin"
 
 
+def unify_logs_dir() -> None:
+    """
+    Unica cartella per TUTTI i log, come su Linux. Se TetraEar e' una
+    sottocartella, la sua 'logs' diventa una JUNCTION (mklink /J) verso la
+    'logs' accanto all'installer: install.log, install_extra.log, codec_*.log,
+    console_*.log ecc. finiscono cosi' in un solo posto. Su Windows si usa una
+    junction (non un symlink) perche' NON richiede privilegi di amministratore.
+    Eventuali log gia' presenti vengono spostati, non persi. Best-effort: un
+    errore qui non blocca l'installazione.
+    """
+    if TETRAEAR_ROOT == INSTALLER_DIR:
+        return  # lo script e' gia' dentro TetraEar: esiste una sola logs
+
+    app_logs = TETRAEAR_ROOT / "logs"
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Junction gia' presente e corretta? Niente da fare.
+        if app_logs.exists() and app_logs.is_dir():
+            try:
+                if app_logs.resolve() == LOG_DIR.resolve() and app_logs.is_symlink():
+                    return
+            except OSError:
+                pass
+
+        if app_logs.is_symlink():
+            # Junction/symlink verso un'altra destinazione: la rimuovo.
+            app_logs.unlink()
+        elif app_logs.is_dir():
+            # Migro i log esistenti nella cartella unificata (senza
+            # sovrascrivere eventuali omonimi gia' presenti).
+            for entry in app_logs.iterdir():
+                target = LOG_DIR / entry.name
+                if not target.exists():
+                    shutil.move(str(entry), str(target))
+            app_logs.rmdir()
+
+        # 'mklink /J' e' un comando interno di cmd.exe: crea una junction di
+        # cartella senza bisogno di permessi elevati.
+        result = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(app_logs), str(LOG_DIR)],
+            capture_output=True, text=True,
+        )
+        if result.returncode == 0:
+            logger.info("[OK] Cartella log unificata: %s -> %s", app_logs, LOG_DIR)
+        else:
+            # Se la junction non si crea, l'app usera' comunque la sua cartella.
+            app_logs.mkdir(parents=True, exist_ok=True)
+            logger.warning(
+                "[ATTENZIONE] Non sono riuscito a unificare le cartelle dei log "
+                "(%s): l'app scrivera' in %s.",
+                result.stderr.strip() or "mklink fallito", app_logs,
+            )
+    except OSError as exc:
+        logger.warning(
+            "[ATTENZIONE] Non sono riuscito a unificare le cartelle dei log (%s): "
+            "l'app continuera' a scrivere in %s.", exc, app_logs
+        )
+
+
 def ensure_tetraear_source(clone_if_missing: bool = True) -> Path:
     if _looks_like_tetraear_root(INSTALLER_DIR):
         logger.info("[OK] Sorgente di TetraEar trovato nella cartella corrente")
@@ -1269,6 +1329,7 @@ def warn_about_rtl_sdr_on_windows() -> None:
 def do_repair() -> None:
     step("Modalita' --repair: ricompilo il codec, sistemo pyrtlsdr e rtlsdr.dll")
     ensure_tetraear_source(clone_if_missing=True)
+    unify_logs_dir()
     patch_tetraear_source_bugs()
     patch_voice_hide_codec_window()
     patch_voice_codec_timeout()
@@ -1423,6 +1484,7 @@ def main() -> int:
 
         install_system_dependencies()
         ensure_tetraear_source(clone_if_missing=True)
+        unify_logs_dir()
         patch_tetraear_source_bugs()
         patch_voice_hide_codec_window()
         patch_voice_codec_timeout()
