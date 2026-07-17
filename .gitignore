@@ -3,3 +3,5 @@ __pycache__/
 .venv/
 install.log
 TetraEar/
+install_extra.log
+decoders/
