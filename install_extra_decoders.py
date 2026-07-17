@@ -400,11 +400,32 @@ def _binary_present(name: str) -> bool:
     return (LOCAL_BIN_DIR / name).is_file()
 
 
-def verify_and_summary(selected: list) -> bool:
+def _tetraear_root() -> Path:
+    """Individua la copia di TetraEar con la stessa logica di install_linux.py:
+    lo script e' dentro una copia di TetraEar, oppure c'e' ./TetraEar accanto."""
+    if (INSTALLER_DIR / "requirements.txt").is_file() and (INSTALLER_DIR / "tetraear").is_dir():
+        return INSTALLER_DIR
+    return INSTALLER_DIR / "TetraEar"
+
+
+def verify_and_summary(selected: list, completed_install: bool = True) -> bool:
     step("Verifica finale")
     status = {name: _binary_present(name) for name in selected}
     for name, ok in status.items():
         logger.info("  %s %s", "[OK]   " if ok else "[MANCA]", name)
+
+    # Riquadro finale di fine installazione (non in modalita' --check, dove
+    # non e' stato installato nulla).
+    if completed_install:
+        logger.info("")
+        logger.info("========================================================")
+        logger.info(" Installazione completata con successo!")
+        logger.info("")
+        logger.info(" Per avviare TetraEar:")
+        logger.info("   cd %s", _tetraear_root())
+        logger.info("   source .venv/bin/activate")
+        logger.info("   python -m tetraear -f 392.225")
+        logger.info("========================================================")
 
     logger.info("")
     logger.info("=" * 60)
@@ -472,7 +493,7 @@ def main() -> int:
 
     try:
         if args.check:
-            verify_and_summary(selected)
+            verify_and_summary(selected, completed_install=False)
             return 0
 
         check_python_version()
