@@ -70,6 +70,21 @@ inject_cflags() {
   info "Compatibilita' compilatore applicata a $(basename "$(dirname "$mk")")/$(basename "$mk")"
 }
 
+# telive_receiver.h usa 'time_t' ma non include <time.h>: sulle glibc recenti
+# la build fallisce con "unknown type name 'time_t'". Aggiungiamo l'include
+# suggerito dallo stesso GCC. Idempotente e best-effort.
+patch_telive_includes() {
+  local h="$TELIVE_DIR/telive_receiver.h"
+  [ -f "$h" ] || return 0
+  grep -q '#include <time.h>' "$h" && return 0
+  if grep -q '#include <stdint.h>' "$h"; then
+    sed -i 's|#include <stdint.h>|#include <stdint.h>\n#include <time.h>|' "$h"
+  else
+    sed -i '1i #include <time.h>' "$h"
+  fi
+  info "Aggiunto #include <time.h> a telive_receiver.h"
+}
+
 # ---------------------------------------------------------------------------
 # 0) Controlli preliminari
 # ---------------------------------------------------------------------------
@@ -170,6 +185,7 @@ make -C "$OSMO_DIR/codec/c-code" -j"$JOBS"
 # ---------------------------------------------------------------------------
 step "5) Compilo telive"
 inject_cflags "$TELIVE_DIR/Makefile"
+patch_telive_includes
 make -C "$TELIVE_DIR" -j"$JOBS"
 [ -x "$TELIVE_DIR/telive" ] && info "OK: telive compilato" || { echo "ERRORE: telive non compilato"; exit 1; }
 

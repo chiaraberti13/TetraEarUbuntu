@@ -505,11 +505,33 @@ def build_etsi_codec() -> bool:
 # BUILD 3 -- telive
 # ============================================================
 
+def _patch_telive_missing_includes() -> None:
+    """telive_receiver.h usa 'time_t' ma non include <time.h>: sulle glibc
+    recenti (Ubuntu 24.04/25.10) time.h non e' piu' incluso implicitamente e la
+    build fallisce con "unknown type name 'time_t'". Aggiungiamo l'include che
+    lo stesso GCC suggerisce. Idempotente e best-effort."""
+    header = TELIVE_DIR / "telive_receiver.h"
+    if not header.is_file():
+        return
+    text = header.read_text(encoding="utf-8", errors="ignore")
+    if "#include <time.h>" in text:
+        return
+    if "#include <stdint.h>" in text:
+        new_text = text.replace(
+            "#include <stdint.h>", "#include <stdint.h>\n#include <time.h>", 1
+        )
+    else:
+        new_text = "#include <time.h>\n" + text
+    header.write_text(new_text, encoding="utf-8")
+    logger.info("[OK] Aggiunto #include <time.h> a telive_receiver.h (glibc recenti)")
+
+
 def build_telive() -> bool:
     step("Compilazione di telive (interfaccia)")
     if not (TELIVE_DIR / "Makefile").is_file():
         fail(f"Makefile di telive non trovato in {TELIVE_DIR} (clone fallito?).")
     _inject_compat_cflags(TELIVE_DIR / "Makefile")
+    _patch_telive_missing_includes()
     run(["make", f"-j{os.cpu_count() or 1}"], cwd=TELIVE_DIR, check=False)
     if (TELIVE_DIR / "telive").is_file():
         logger.info("[OK] Compilato telive")
