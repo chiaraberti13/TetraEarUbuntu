@@ -446,10 +446,12 @@ def setup_tetra_dir() -> None:
     step("Preparazione della cartella di lavoro /tetra")
     user = _invoking_user()
 
-    # /tetra sta nella radice del filesystem: serve sudo per crearla, poi la
-    # rendiamo scrivibile dall'utente (telive/tetra-rx ci scrivono i .out).
+    # /tetra sta nella radice del filesystem: serve sudo per crearla. La
+    # rendiamo poi scrivibile dall'utente (telive/tetra-rx ci scrivono i .out).
+    # Se non e' scrivibile dal processo corrente, la prepariamo via sudo.
     run(["mkdir", "-p", str(TETRA_DIR)], sudo=True)
-    run(["chown", "-R", f"{user}:{user}", str(TETRA_DIR)], sudo=True, check=False)
+    if not os.access(TETRA_DIR, os.W_OK):
+        run(["chown", f"{user}:{user}", str(TETRA_DIR)], sudo=True, check=False)
 
     for sub in ("in", "out", "log", "tmp", "bin"):
         (TETRA_DIR / sub).mkdir(parents=True, exist_ok=True)
@@ -472,6 +474,11 @@ def setup_tetra_dir() -> None:
             shutil.copy2(built, dst)
             dst.chmod(dst.stat().st_mode | 0o111)
             logger.info("[OK] Copiato in /tetra/bin: %s", built.name)
+
+    # Come ultimo passo garantiamo che TUTTA /tetra (sottocartelle e file appena
+    # creati) sia dell'utente reale: se l'installer gira sotto sudo, i file
+    # sarebbero altrimenti di root e telive non potrebbe scriverci.
+    run(["chown", "-R", f"{user}:{user}", str(TETRA_DIR)], sudo=True, check=False)
 
     logger.info("[OK] /tetra pronta (in/out/log/tmp/bin).")
 
