@@ -3,6 +3,7 @@ __pycache__/
 .venv/
 TetraEar/
 decoders/
+telive2/
 logs/
 # vecchi percorsi dei log (ora tutto in logs/), lasciati per compatibilità
 install.log

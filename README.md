@@ -256,6 +256,51 @@ sections below. On Windows use `install_extra_decoders_windows.py`.
 
 ---
 
+### 🔓 Known-key voice decryption — TELIVE-2 (Linux)
+
+TetraEar decodes **clear** TETRA voice. If you already *own* the encryption
+key, the **TELIVE-2** chain (osmo-tetra-sq5bpf-2 + the ETSI codec + telive)
+by Jacek Lipkowski (SQ5BPF) can also **decrypt** voice — including the
+**32-bit shortened TEA-1 key** (the backdoor documented by Team Midnight Blue
+in 2023). A complementary installer automates the whole chain:
+
+```bash
+python3 install_telive2.py            # build & wire up the whole chain
+python3 install_telive2.py --check    # just report what's present
+python3 install_telive2.py --no-gnuradio   # skip GNU Radio (already installed)
+```
+
+It clones and builds `osmo-tetra-sq5bpf-2` (the `tetra-rx` receiver with the
+**real** TEA1/2/3 crypto and the `-k keyfile` flag), downloads and patches the
+**ETSI voice codec** (`cdecoder`/`sdecoder`, with the same browser-User-Agent
+trick used by `install_linux.py` so the ETSI `403 Forbidden` never bites),
+builds `telive`, and sets up the `/tetra` working folder plus the bundled GNU
+Radio flowgraph. Usage (receiver → telive → play) is printed at the end.
+
+**Providing the known key** — pass a keyfile to the receiver
+(`./tetra-rx -r -k <keyfile> -s`; `receiver1udp` already does). One line per
+key, e.g.:
+
+```
+network mcc 0123 mnc 1337 ksg_type 1 security_class 2
+key mcc 0123 mnc 1337 addr 00000000 key_type 1  key_num 0 key 11111111111111111111
+# 32-bit shortened TEA-1 key (pad to 80 bits): key_type 16
+key mcc 0123 mnc 1337 addr 00000000 key_type 16 key_num 0 key 12345678000000000000
+```
+
+> ℹ️ **Why not TetraEar's own key loader?** TetraEar's GUI *does* have a
+> "🔑 Load Keys" button and a key-file loader, but its `core/crypto.py`
+> TEA1–4 are **simplified placeholder** implementations (its own docstrings
+> note the real algorithms are proprietary), so a real key won't correctly
+> decrypt real traffic there. The **working** known-key path is TELIVE-2's
+> `tetra-rx -k`.
+
+> ⚠️ **Decryption ≠ cracking.** These tools only decrypt when the key is
+> **already known** — none of them recovers a key. Use only where permitted
+> by law (see [DISCLAIMER](DISCLAIMER.md)).
+
+---
+
 ### 🪟 Windows
 
 Tested on **Windows 10** and **Windows 11** (64-bit).
@@ -620,6 +665,53 @@ rtl_fm -f 446.09375M -s 48000 -g 42 - | dsd-fme -i - -o /dev/null
 
 📖 La guida d'uso completa (frequenze, comandi, note per Windows) è nelle
 sezioni seguenti. Su Windows usa `install_extra_decoders_windows.py`.
+
+---
+
+### 🔓 Decifratura vocale a chiave nota — TELIVE-2 (Linux)
+
+TetraEar decodifica la voce TETRA **in chiaro**. Se possiedi *già* la chiave
+di cifratura, la catena **TELIVE-2** (osmo-tetra-sq5bpf-2 + codec ETSI +
+telive) di Jacek Lipkowski (SQ5BPF) sa anche **decifrare** la voce — inclusa
+la **chiave TEA-1 accorciata a 32 bit** (il backdoor documentato da Team
+Midnight Blue nel 2023). Un installer complementare automatizza tutta la
+catena:
+
+```bash
+python3 install_telive2.py            # compila e collega tutta la catena
+python3 install_telive2.py --check    # controlla soltanto cosa è presente
+python3 install_telive2.py --no-gnuradio   # salta GNU Radio (se ce l'hai già)
+```
+
+Clona e compila `osmo-tetra-sq5bpf-2` (il ricevitore `tetra-rx` con la crypto
+TEA1/2/3 **reale** e il flag `-k keyfile`), scarica e patcha il **codec vocale
+ETSI** (`cdecoder`/`sdecoder`, con lo stesso trucco dello User-Agent «da
+browser» usato da `install_linux.py`, così il `403 Forbidden` di ETSI non si
+presenta), compila `telive` e prepara la cartella di lavoro `/tetra` più il
+flowgraph GNU Radio incluso. Le istruzioni d'uso (ricevitore → telive →
+riproduzione) vengono stampate alla fine.
+
+**Come si fornisce la chiave nota** — si passa un keyfile al ricevitore
+(`./tetra-rx -r -k <keyfile> -s`; `receiver1udp` lo fa già). Una riga per
+chiave, ad esempio:
+
+```
+network mcc 0123 mnc 1337 ksg_type 1 security_class 2
+key mcc 0123 mnc 1337 addr 00000000 key_type 1  key_num 0 key 11111111111111111111
+# chiave TEA-1 accorciata a 32 bit (padding a 80 bit): key_type 16
+key mcc 0123 mnc 1337 addr 00000000 key_type 16 key_num 0 key 12345678000000000000
+```
+
+> ℹ️ **Perché non il caricatore chiavi di TetraEar?** La GUI di TetraEar *ha*
+> un pulsante «🔑 Load Keys» e un loader di keyfile, ma i suoi TEA1–4 in
+> `core/crypto.py` sono implementazioni **segnaposto semplificate** (lo dicono
+> i suoi stessi docstring: gli algoritmi reali sono proprietari), quindi lì
+> una chiave reale non decifra correttamente il traffico reale. Il percorso a
+> chiave nota **funzionante** è `tetra-rx -k` di TELIVE-2.
+
+> ⚠️ **Decifrare ≠ craccare.** Questi strumenti decifrano solo con chiave
+> **già nota**: nessuno di essi recupera una chiave. Usa solo dove consentito
+> dalla legge (vedi [DISCLAIMER](DISCLAIMER.md)).
 
 ---
 
