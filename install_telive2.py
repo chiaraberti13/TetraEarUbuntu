@@ -38,10 +38,12 @@ import argparse
 import logging
 import os
 import platform
+import re
 import shutil
 import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # ============================================================
@@ -281,6 +283,86 @@ def clone_sources() -> None:
 
 
 # ============================================================
+# COMPATIBILITA' COMPILATORE (GCC 14/15)
+# ============================================================
+#
+# I sorgenti di SQ5BPF (osmo-tetra, telive) e il codec ETSI sono C "vecchio":
+# contengono costrutti che GCC 14 e soprattutto GCC 15 (Ubuntu 25.10) hanno
+# promosso da warning a ERRORE per default (es. 'return' senza valore in
+# funzione non-void -> -Wreturn-mismatch, chiamate implicite, ecc.). Su GCC 13
+# (Ubuntu 24.04) sono ancora warning e la build passa.
+#
+# Per far compilare lo STESSO installer su entrambe le distro (e su x86 e
+# ARM64), riportiamo quei pochi errori a warning con i flag '-Wno-error=...'.
+# Attenzione: un flag SCONOSCIUTO fa fallire gcc; percio' teniamo solo quelli
+# che il compilatore locale accetta davvero (li proviamo uno per uno).
+
+_GCC_COMPAT_CANDIDATES = [
+    "-Wno-error=implicit-int",
+    "-Wno-error=implicit-function-declaration",
+    "-Wno-error=int-conversion",
+    "-Wno-error=incompatible-pointer-types",
+    "-Wno-error=return-mismatch",
+    "-Wno-error=declaration-missing-parameter-type",
+    "-Wno-error=old-style-definition",
+]
+
+_COMPAT_CFLAGS_CACHE: str | None = None
+
+
+def _compat_cflags() -> str:
+    """Sottoinsieme di _GCC_COMPAT_CANDIDATES accettato dal compilatore locale.
+    Calcolato una volta sola: su GCC 13 restano i flag noti, su GCC 15 si
+    aggiungono quelli nuovi (es. -Wno-error=return-mismatch) che sbloccano la
+    build. Cosi' lo stesso codice va su 24.04 e su 25.10."""
+    global _COMPAT_CFLAGS_CACHE
+    if _COMPAT_CFLAGS_CACHE is not None:
+        return _COMPAT_CFLAGS_CACHE
+
+    cc = os.environ.get("CC") or "cc"
+    accepted = []
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            src = Path(td) / "probe.c"
+            src.write_text("int main(void){return 0;}\n", encoding="utf-8")
+            obj = Path(td) / "probe.o"
+            for flag in _GCC_COMPAT_CANDIDATES:
+                try:
+                    result = subprocess.run(
+                        [cc, flag, "-c", str(src), "-o", str(obj)],
+                        capture_output=True,
+                    )
+                    if result.returncode == 0:
+                        accepted.append(flag)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+    _COMPAT_CFLAGS_CACHE = " ".join(accepted)
+    if _COMPAT_CFLAGS_CACHE:
+        logger.info("[INFO] Flag di compatibilita' compilatore: %s", _COMPAT_CFLAGS_CACHE)
+    return _COMPAT_CFLAGS_CACHE
+
+
+def _inject_compat_cflags(makefile: Path) -> None:
+    """Aggiunge i flag di compatibilita' alla prima riga 'CFLAGS=' di un
+    Makefile (subito dopo l'uguale, cosi' eventuali commenti a fine riga
+    restano fuori). Idempotente e best-effort: se non trova CFLAGS non fa nulla."""
+    extra = _compat_cflags()
+    if not extra or not makefile.is_file():
+        return
+    text = makefile.read_text(encoding="utf-8", errors="ignore")
+    marker = extra.split()[0]
+    if marker in text:
+        return  # gia' iniettato
+    new_text = re.sub(r"(?m)^(CFLAGS\s*=)", r"\1 " + extra + " ", text, count=1)
+    if new_text != text:
+        makefile.write_text(new_text, encoding="utf-8")
+        logger.info("[OK] Compatibilita' compilatore applicata a %s", makefile.relative_to(TELIVE2_DIR) if TELIVE2_DIR in makefile.parents else makefile.name)
+
+
+# ============================================================
 # BUILD 1 -- osmo-tetra-sq5bpf-2 (ricevitore tetra-rx)
 # ============================================================
 
@@ -289,7 +371,8 @@ def build_osmo_tetra() -> bool:
     src = OSMO_DIR / "src"
     if not src.is_dir():
         fail(f"Cartella sorgente non trovata: {src} (clone fallito?).")
-    run(["make", f"-j{os.cpu_count() or 1}"], cwd=src)
+    _inject_compat_cflags(src / "Makefile")
+    run(["make", f"-j{os.cpu_count() or 1}"], cwd=src, check=False)
 
     ok = True
     for binary in ("tetra-rx", "float_to_bits"):
@@ -405,7 +488,8 @@ def build_etsi_codec() -> bool:
     if not codec_ccode.is_dir():
         logger.error("[FALLITO] Cartella codec %s assente dopo il patch.", codec_ccode)
         return False
-    run(["make", f"-j{os.cpu_count() or 1}"], cwd=codec_ccode)
+    _inject_compat_cflags(codec_ccode / "Makefile")
+    run(["make", f"-j{os.cpu_count() or 1}"], cwd=codec_ccode, check=False)
 
     ok = True
     for binary in ("cdecoder", "sdecoder"):
@@ -425,7 +509,8 @@ def build_telive() -> bool:
     step("Compilazione di telive (interfaccia)")
     if not (TELIVE_DIR / "Makefile").is_file():
         fail(f"Makefile di telive non trovato in {TELIVE_DIR} (clone fallito?).")
-    run(["make", f"-j{os.cpu_count() or 1}"], cwd=TELIVE_DIR)
+    _inject_compat_cflags(TELIVE_DIR / "Makefile")
+    run(["make", f"-j{os.cpu_count() or 1}"], cwd=TELIVE_DIR, check=False)
     if (TELIVE_DIR / "telive").is_file():
         logger.info("[OK] Compilato telive")
         return True
