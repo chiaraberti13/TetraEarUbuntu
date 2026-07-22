@@ -256,7 +256,7 @@ sections below. On Windows use `install_extra_decoders_windows.py`.
 
 ---
 
-### 🔓 Known-key voice decryption — TELIVE-2 (Linux)
+### 🔓 Known-key voice decryption — TELIVE-2 (Linux & Windows via WSL)
 
 TetraEar decodes **clear** TETRA voice. If you already *own* the encryption
 key, the **TELIVE-2** chain (osmo-tetra-sq5bpf-2 + the ETSI codec + telive)
@@ -298,6 +298,21 @@ key mcc 0123 mnc 1337 addr 00000000 key_type 16 key_num 0 key 123456780000000000
 > ⚠️ **Decryption ≠ cracking.** These tools only decrypt when the key is
 > **already known** — none of them recovers a key. Use only where permitted
 > by law (see [DISCLAIMER](DISCLAIMER.md)).
+
+**On Windows** the TELIVE-2 chain runs through **WSL2** (Ubuntu inside
+Windows), because it is deeply POSIX (`libosmocore`, GNU Radio, shell scripts,
+the fixed `/tetra` folder) and has no reliable native Windows build. The
+companion installer detects WSL and runs the *same* Linux installer inside it:
+
+```bat
+python install_telive2_windows.py              REM detects WSL and builds inside Ubuntu
+python install_telive2_windows.py --check      REM just report WSL / build status
+python install_telive2_windows.py --guide-only REM print the WSL setup steps only
+```
+
+If WSL isn't enabled yet, it prints the one-time setup (`wsl --install -d
+Ubuntu`, reboot, create a user) and then you re-run it. GNU Radio's GUI shows
+up automatically via WSLg on Windows 11 (on Windows 10 you need an X server).
 
 ---
 
@@ -668,7 +683,7 @@ sezioni seguenti. Su Windows usa `install_extra_decoders_windows.py`.
 
 ---
 
-### 🔓 Decifratura vocale a chiave nota — TELIVE-2 (Linux)
+### 🔓 Decifratura vocale a chiave nota — TELIVE-2 (Linux e Windows via WSL)
 
 TetraEar decodifica la voce TETRA **in chiaro**. Se possiedi *già* la chiave
 di cifratura, la catena **TELIVE-2** (osmo-tetra-sq5bpf-2 + codec ETSI +
@@ -712,6 +727,22 @@ key mcc 0123 mnc 1337 addr 00000000 key_type 16 key_num 0 key 123456780000000000
 > ⚠️ **Decifrare ≠ craccare.** Questi strumenti decifrano solo con chiave
 > **già nota**: nessuno di essi recupera una chiave. Usa solo dove consentito
 > dalla legge (vedi [DISCLAIMER](DISCLAIMER.md)).
+
+**Su Windows** la catena TELIVE-2 gira tramite **WSL2** (Ubuntu dentro
+Windows), perché è profondamente POSIX (`libosmocore`, GNU Radio, script di
+shell, la cartella fissa `/tetra`) e non ha una build Windows nativa
+affidabile. L'installer complementare rileva WSL ed esegue al suo interno lo
+*stesso* installer Linux:
+
+```bat
+python install_telive2_windows.py              REM rileva WSL e compila dentro Ubuntu
+python install_telive2_windows.py --check      REM verifica solo lo stato WSL / build
+python install_telive2_windows.py --guide-only REM stampa solo i passi per abilitare WSL
+```
+
+Se WSL non è ancora attivo, stampa la configurazione iniziale (`wsl --install
+-d Ubuntu`, riavvio, creazione utente) e poi lo rilanci. La GUI di GNU Radio
+compare automaticamente via WSLg su Windows 11 (su Windows 10 serve un server X).
 
 ---
 
