@@ -1766,6 +1766,32 @@ def run_extra_decoders(skip: bool) -> None:
         )
 
 
+def run_telive2(skip: bool) -> None:
+    """
+    Avvia in AUTOMATICO l'installer della catena TELIVE-2 (decifratura vocale
+    TETRA a chiave nota), se presente accanto a questo script. E' best-effort:
+    viene eseguito DOPO che TetraEar e' gia' installato e verificato, quindi un
+    eventuale errore qui non compromette TetraEar. Si disattiva con --no-telive2.
+    """
+    script = INSTALLER_DIR / "install_telive2.py"
+    if skip:
+        logger.info("[INFO] Catena TELIVE-2 saltata (--no-telive2).")
+        return
+    if not script.is_file():
+        return
+
+    step("Installo anche TELIVE-2 (decifratura vocale a chiave nota)")
+    logger.info("Avvio %s (log in logs/install_telive2.log) ...", script.name)
+    # Output "dal vivo" (niente cattura): la build puo' durare diversi minuti.
+    result = subprocess.run([sys.executable, str(script)])
+    if result.returncode != 0:
+        logger.warning(
+            "[ATTENZIONE] L'installazione di TELIVE-2 non e' andata a buon fine "
+            "(vedi logs/install_telive2.log). TetraEar resta comunque installato "
+            "e funzionante."
+        )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Installer TetraEar per Linux (Ubuntu 24.04 / Debian 12)"
@@ -1794,6 +1820,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-extra", action="store_true",
         help="Non installare automaticamente i decoder aggiuntivi (DMR/P25, ADS-B, cercapersone)",
+    )
+    parser.add_argument(
+        "--no-telive2", action="store_true",
+        help="Non installare automaticamente la catena TELIVE-2 (decifratura vocale a chiave nota)",
     )
     return parser.parse_args()
 
@@ -1876,6 +1906,8 @@ def main() -> int:
         verify_installation()
         # TetraEar e' pronto: installo anche gli altri decoder in automatico.
         run_extra_decoders(args.no_extra)
+        # ...e la catena TELIVE-2 (decifratura vocale a chiave nota).
+        run_telive2(args.no_telive2)
         return 0
 
     except InstallError:

@@ -262,7 +262,14 @@ TetraEar decodes **clear** TETRA voice. If you already *own* the encryption
 key, the **TELIVE-2** chain (osmo-tetra-sq5bpf-2 + the ETSI codec + telive)
 by Jacek Lipkowski (SQ5BPF) can also **decrypt** voice — including the
 **32-bit shortened TEA-1 key** (the backdoor documented by Team Midnight Blue
-in 2023). A complementary installer automates the whole chain:
+in 2023).
+
+> ✅ **This runs automatically** at the end of `install_linux.py` — you don't
+> need a separate step. Pass `--no-telive2` to the main installer to skip it.
+> The build is heavy (GNU Radio, `libosmocore`, the ETSI codec), so it adds a
+> few minutes.
+
+You can also run (or re-run) the complementary installer on its own:
 
 ```bash
 python3 install_telive2.py            # build & wire up the whole chain
@@ -689,8 +696,14 @@ TetraEar decodifica la voce TETRA **in chiaro**. Se possiedi *già* la chiave
 di cifratura, la catena **TELIVE-2** (osmo-tetra-sq5bpf-2 + codec ETSI +
 telive) di Jacek Lipkowski (SQ5BPF) sa anche **decifrare** la voce — inclusa
 la **chiave TEA-1 accorciata a 32 bit** (il backdoor documentato da Team
-Midnight Blue nel 2023). Un installer complementare automatizza tutta la
-catena:
+Midnight Blue nel 2023).
+
+> ✅ **Viene installata in automatico** alla fine di `install_linux.py` — non
+> serve un passo separato. Per saltarla, passa `--no-telive2` all'installer
+> principale. La build è pesante (GNU Radio, `libosmocore`, codec ETSI),
+> quindi aggiunge qualche minuto.
+
+Puoi comunque eseguire (o rieseguire) l'installer complementare da solo:
 
 ```bash
 python3 install_telive2.py            # compila e collega tutta la catena
