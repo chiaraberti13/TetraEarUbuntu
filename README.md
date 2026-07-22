@@ -277,6 +277,15 @@ python3 install_telive2.py --check    # just report what's present
 python3 install_telive2.py --no-gnuradio   # skip GNU Radio (already installed)
 ```
 
+Prefer a plain shell script? `install_telive2.sh` does the same, standalone
+(run it as a normal user, **not** with sudo). It is portable across
+**Ubuntu 24.04 (x86)** and **25.10 (ARM64)** — it auto-detects the compiler
+flags needed to build the older SQ5BPF C sources on GCC 15:
+
+```bash
+bash install_telive2.sh
+```
+
 It clones and builds `osmo-tetra-sq5bpf-2` (the `tetra-rx` receiver with the
 **real** TEA1/2/3 crypto and the `-k keyfile` flag), downloads and patches the
 **ETSI voice codec** (`cdecoder`/`sdecoder`, with the same browser-User-Agent
@@ -709,6 +718,15 @@ Puoi comunque eseguire (o rieseguire) l'installer complementare da solo:
 python3 install_telive2.py            # compila e collega tutta la catena
 python3 install_telive2.py --check    # controlla soltanto cosa è presente
 python3 install_telive2.py --no-gnuradio   # salta GNU Radio (se ce l'hai già)
+```
+
+Preferisci un semplice script di shell? `install_telive2.sh` fa lo stesso, in
+modo autonomo (lancialo da utente normale, **non** con sudo). È portabile fra
+**Ubuntu 24.04 (x86)** e **25.10 (ARM64)** — rileva da solo i flag del
+compilatore necessari a compilare i vecchi sorgenti C di SQ5BPF su GCC 15:
+
+```bash
+bash install_telive2.sh
 ```
 
 Clona e compila `osmo-tetra-sq5bpf-2` (il ricevitore `tetra-rx` con la crypto
