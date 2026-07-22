@@ -46,7 +46,8 @@ detect_compat_cflags() {
   local cc="${CC:-cc}" out="" f tmp
   tmp="$(mktemp -d)"
   printf 'int main(void){return 0;}\n' > "$tmp/probe.c"
-  for f in -Wno-error=implicit-int -Wno-error=implicit-function-declaration \
+  for f in -std=gnu17 \
+           -Wno-error=implicit-int -Wno-error=implicit-function-declaration \
            -Wno-error=int-conversion -Wno-error=incompatible-pointer-types \
            -Wno-error=return-mismatch -Wno-error=declaration-missing-parameter-type \
            -Wno-error=old-style-definition; do
@@ -65,7 +66,7 @@ inject_cflags() {
   local mk="$1"
   [ -f "$mk" ] || return 0
   [ -n "$COMPAT_CFLAGS" ] || return 0
-  grep -q -- '-Wno-error=' "$mk" && return 0
+  grep -q -- '-std=gnu17' "$mk" && return 0
   sed -i "0,/^CFLAGS[[:space:]]*=/s//& ${COMPAT_CFLAGS} /" "$mk"
   info "Compatibilita' compilatore applicata a $(basename "$(dirname "$mk")")/$(basename "$mk")"
 }

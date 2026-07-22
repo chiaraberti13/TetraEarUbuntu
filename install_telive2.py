@@ -298,6 +298,12 @@ def clone_sources() -> None:
 # che il compilatore locale accetta davvero (li proviamo uno per uno).
 
 _GCC_COMPAT_CANDIDATES = [
+    # GCC 15 usa il C23 per default, dove '()' significa '(void)': cosi' il
+    # vecchio codice che chiama funzioni K&R con argomenti in piu' (es.
+    # telive.c: timeout_receivers(grxml_url) su 'void timeout_receivers()')
+    # non compila. -std=gnu17 ripristina la semantica precedente. E' il default
+    # su GCC 11-14, quindi innocuo su 24.04; risolve la build su 25.10.
+    "-std=gnu17",
     "-Wno-error=implicit-int",
     "-Wno-error=implicit-function-declaration",
     "-Wno-error=int-conversion",
