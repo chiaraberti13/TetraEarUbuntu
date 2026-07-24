@@ -114,6 +114,28 @@ def check_operating_system() -> None:
         )
 
 
+def log_system_diagnostics() -> None:
+    """Registra le informazioni di sistema utili a diagnosticare i problemi:
+    versione di Windows, architettura, stato e distribuzioni WSL. I dettagli
+    piu' verbosi (output di 'wsl --status' / 'wsl -l -v') vanno nel file di log."""
+    logger.info("")
+    logger.info("----- DIAGNOSTICA DI SISTEMA -----")
+    logger.info(" sistema       : %s %s (%s)", platform.system(), platform.release(), platform.machine())
+    logger.info(" python        : %s", platform.python_version())
+    wsl = _wsl_exe()
+    logger.info(" wsl.exe       : %s", wsl or "assente")
+    if wsl:
+        try:
+            status = subprocess.run([wsl, "--status"], capture_output=True, timeout=30)
+            logger.debug(" wsl --status:\n%s", _decode_wsl_output(status.stdout).strip())
+            listing = subprocess.run([wsl, "-l", "-v"], capture_output=True, timeout=30)
+            logger.debug(" wsl -l -v:\n%s", _decode_wsl_output(listing.stdout).strip())
+        except (OSError, subprocess.SubprocessError) as exc:
+            logger.debug(" (impossibile interrogare WSL: %s)", exc)
+    logger.info(" (dettagli WSL completi nel file %s)", LOG_FILE)
+    logger.info("----------------------------------")
+
+
 # ============================================================
 # RILEVAMENTO WSL
 # ============================================================
@@ -280,7 +302,11 @@ def verify_and_summary(completed: bool = True) -> bool:
 
     logger.info("")
     logger.info("Guida d'uso completa: README.md (sezione TELIVE-2 / Windows)")
-    logger.info("Log: %s", LOG_FILE)
+    logger.info("Log di questo launcher : %s", LOG_FILE)
+    logger.info("Log DETTAGLIATI della build (dentro WSL): la cartella logs/ creata")
+    logger.info("dall'installer Linux, accanto a install_telive2.py — contiene")
+    logger.info("install_telive2.log (DEBUG su file), receiver.log, gnuradio.log")
+    logger.info("e telive-runtime.log.")
 
     if built:
         logger.info("")
@@ -316,6 +342,7 @@ def main() -> int:
 
     logger.info("====== Installer TELIVE-2 (Windows/WSL) v%s ======", SCRIPT_VERSION)
     logger.info("Log completo in: %s", LOG_FILE)
+    log_system_diagnostics()
 
     if args.check:
         verify_and_summary(completed=False)

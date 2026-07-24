@@ -141,6 +141,36 @@ def setup_logging() -> None:
         pass
 
 
+def log_system_diagnostics() -> None:
+    """Registra (soprattutto nel file di log, a livello DEBUG per i dettagli)
+    le informazioni di sistema utili a diagnosticare gli errori di build:
+    distribuzione, architettura, versioni di gcc/make/gnuradio/libosmocore, ecc."""
+    def _cmd(args: list) -> str:
+        try:
+            r = subprocess.run(args, capture_output=True, text=True, timeout=15)
+            return (r.stdout or r.stderr).strip().splitlines()[0] if (r.stdout or r.stderr).strip() else "(vuoto)"
+        except Exception:  # noqa: BLE001
+            return "assente"
+
+    os_info = read_os_release()
+    logger.info("")
+    logger.info("----- DIAGNOSTICA DI SISTEMA -----")
+    logger.info(" distribuzione : %s", os_info.get("PRETTY_NAME", "sconosciuta"))
+    logger.info(" kernel/arch   : %s %s", platform.release(), platform.machine())
+    logger.info(" python        : %s (%s)", platform.python_version(), sys.executable)
+    logger.info(" cpu core      : %s", os.cpu_count() or "?")
+    # I dettagli piu' verbosi vanno soprattutto nel file di log (DEBUG).
+    logger.debug(" gcc           : %s", _cmd(["gcc", "--version"]))
+    logger.debug(" cc            : %s", _cmd(["cc", "--version"]))
+    logger.debug(" make          : %s", _cmd(["make", "--version"]))
+    logger.debug(" git           : %s", _cmd(["git", "--version"]))
+    logger.debug(" gnuradio      : %s", _cmd(["gnuradio-config-info", "-v"]))
+    logger.debug(" libosmocore   : %s", _cmd(["pkg-config", "--modversion", "libosmocore"]))
+    logger.debug(" libxml2       : %s", _cmd(["xml2-config", "--version"]))
+    logger.info(" (versioni dettagliate di gcc/gnuradio/... nel file %s)", LOG_FILE)
+    logger.info("----------------------------------")
+
+
 class InstallError(Exception):
     """Errore gia' segnalato in modo leggibile: il main esce senza traceback."""
 
@@ -648,9 +678,26 @@ def setup_runtime_logs() -> None:
         )
         recv_launcher.chmod(recv_launcher.stat().st_mode | 0o111)
 
+        # Launcher di GNU Radio con log su file (cattura i messaggi GUI/flowgraph).
+        gr_launcher = TELIVE_DIR / "run_gnuradio.sh"
+        gnuradio_log = LOG_DIR / "gnuradio.log"
+        default_grc = TELIVE_DIR / GRC_RELATIVE
+        gr_launcher.write_text(
+            "#!/usr/bin/env bash\n"
+            "# Avvia GNU Radio col flowgraph di telive, registrando TUTTO l'output in:\n"
+            f"#   {gnuradio_log}\n"
+            "# Uso:  ./run_gnuradio.sh [file.grc]   (predefinito: il flowgraph 1ch di telive)\n"
+            f'GRCFILE="${{1:-{default_grc}}}"\n'
+            f'echo "==== gnuradio $(date \'+%Y-%m-%d %H:%M:%S\')  ->  $GRCFILE ====" >> "{gnuradio_log}"\n'
+            f'exec gnuradio-companion "$GRCFILE" 2>&1 | tee -a "{gnuradio_log}"\n',
+            encoding="utf-8",
+        )
+        gr_launcher.chmod(gr_launcher.stat().st_mode | 0o111)
+
         logger.info("[OK] Log installazione : %s", LOG_FILE)
         logger.info("[OK] Log telive (uso)  : %s  (link: %s)", TETRA_DIR / "log" / "telive.log", telive_link)
         logger.info("[OK] Log ricevitore    : %s  (via %s)", receiver_log, recv_launcher)
+        logger.info("[OK] Log GNU Radio     : %s  (via %s)", gnuradio_log, gr_launcher)
     except OSError as exc:
         logger.warning("[ATTENZIONE] Non ho potuto preparare i log di runtime (%s).", exc)
 
@@ -729,7 +776,8 @@ def verify_and_summary(completed_install: bool = True) -> bool:
 
     logger.info("")
     logger.info(" TUTTI I LOG (per monitorare gli errori) sono in: %s", LOG_DIR)
-    logger.info("   - install_telive2.log   (installazione)")
+    logger.info("   - install_telive2.log   (installazione: output completo, DEBUG su file)")
+    logger.info("   - gnuradio.log          (GNU Radio, via telive-2/run_gnuradio.sh)")
     logger.info("   - receiver.log          (ricevitore osmo, via src/run_receiver.sh)")
     logger.info("   - telive-runtime.log    (link a /tetra/log/telive.log)")
     if not all_ok:
@@ -765,6 +813,7 @@ def main() -> int:
 
     logger.info("====== Installer TELIVE-2 v%s ======", SCRIPT_VERSION)
     logger.info("Log completo in: %s", LOG_FILE)
+    log_system_diagnostics()
 
     try:
         if args.check:

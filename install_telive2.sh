@@ -33,21 +33,56 @@ COMPAT_CFLAGS=""   # riempito da detect_compat_cflags dopo l'installazione di gc
 
 # ---------------------------------------------------------------------------
 # Log: cartella 'logs/' accanto allo script, come per gli installer Python.
-# TUTTO l'output (a schermo) viene anche salvato in logs/install_telive2.log,
-# cosi' e' possibile ricostruire ogni errore dell'installazione.
+# Log il piu' DETTAGLIATO possibile:
+#   - logs/install_telive2.log        -> tutto l'output (stdout+stderr) a schermo
+#   - logs/install_telive2.debug.log  -> traccia di OGNI comando eseguito
+#                                        (xtrace, con orario e numero di riga)
+# cosi' e' possibile ricostruire qualunque errore dell'installazione.
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOG_DIR="$SCRIPT_DIR/logs"
 INSTALL_LOG="$LOG_DIR/install_telive2.log"
+DEBUG_LOG="$LOG_DIR/install_telive2.debug.log"
 if mkdir -p "$LOG_DIR" 2>/dev/null; then
   # sdoppia stdout+stderr: a schermo e nel file di log (append).
   exec > >(tee -a "$INSTALL_LOG") 2>&1
   echo "==== install_telive2.sh -- $(date '+%Y-%m-%d %H:%M:%S') ===="
   echo "Log installazione: $INSTALL_LOG"
+  # Traccia dettagliata di ogni comando su un FD separato (non sporca lo schermo).
+  if { : >"$DEBUG_LOG"; } 2>/dev/null; then
+    export PS4='+ [$(date "+%H:%M:%S")] ${BASH_SOURCE##*/}:${LINENO}: '
+    if exec {XTRACE_FD}>>"$DEBUG_LOG" 2>/dev/null; then
+      export BASH_XTRACEFD="$XTRACE_FD"
+      set -x
+      echo "Traccia comandi (dettagliata): $DEBUG_LOG"
+    fi
+  fi
 fi
 
 step() { echo; echo "============================================================"; echo " $*"; echo "============================================================"; }
 info() { echo "  -> $*"; }
+
+# Diagnostica di sistema: utilissima quando qualcosa non compila. Finisce sia a
+# schermo sia nei log (via tee).
+log_system_info() {
+  echo
+  echo "----- DIAGNOSTICA DI SISTEMA -----"
+  echo "data          : $(date '+%Y-%m-%d %H:%M:%S %z')"
+  echo "utente         : $(id -un)  (uid $(id -u))"
+  echo "kernel/arch    : $(uname -srmo 2>/dev/null || uname -a)"
+  echo "distribuzione  : $( . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-sconosciuta}" )"
+  echo "cpu core       : $(nproc)"
+  echo "gcc            : $(gcc --version 2>/dev/null | head -1 || echo assente)"
+  echo "cc             : $(cc --version 2>/dev/null | head -1 || echo assente)"
+  echo "make           : $(make --version 2>/dev/null | head -1 || echo assente)"
+  echo "git            : $(git --version 2>/dev/null || echo assente)"
+  echo "gnuradio       : $(gnuradio-config-info -v 2>/dev/null || echo assente)"
+  echo "libosmocore    : $(pkg-config --modversion libosmocore 2>/dev/null || echo assente)"
+  echo "libxml2        : $(xml2-config --version 2>/dev/null || echo assente)"
+  echo "memoria        : $(free -h 2>/dev/null | awk '/Mem:/{print $2" tot, "$7" disp"}' )"
+  echo "disco (\$HOME)  : $(df -h "$HOME" 2>/dev/null | awk 'NR==2{print $4" liberi su "$2}')"
+  echo "----------------------------------"
+}
 
 # ---------------------------------------------------------------------------
 # Compatibilita' compilatore (GCC 14/15)
@@ -115,6 +150,7 @@ if ! grep -qiE 'ubuntu|debian' /etc/os-release 2>/dev/null; then
   echo "ATTENZIONE: distribuzione non Ubuntu/Debian: proseguo ma apt potrebbe non funzionare."
 fi
 info "Utente: $(id -un)   Core: $JOBS   Arch: $(uname -m)"
+log_system_info
 
 # ---------------------------------------------------------------------------
 # 1) Dipendenze di sistema (Ubuntu 24.04 / 25.10, x86 e ARM64)
@@ -256,26 +292,42 @@ exec ./receiver1udp "\${1:-1}" 2>&1 | tee -a "$LOG_DIR/receiver.log"
 RUNEOF
 chmod +x "$RECV_LAUNCHER"
 
+# launcher di GNU Radio con log su file (cattura i messaggi della GUI/flowgraph)
+GRC="$TELIVE_DIR/gnuradio-companion/python3_based_gnuradio/telive_1ch_simple_gr310_udp_xmlrpc.grc"
+GR_LAUNCHER="$TELIVE_DIR/run_gnuradio.sh"
+cat > "$GR_LAUNCHER" <<GREOF
+#!/usr/bin/env bash
+# Avvia GNU Radio col flowgraph di telive, registrando TUTTO l'output in:
+#   $LOG_DIR/gnuradio.log
+# Uso:  ./run_gnuradio.sh [file.grc]   (predefinito: il flowgraph 1ch di telive)
+GRCFILE="\${1:-$GRC}"
+echo "==== gnuradio \$(date '+%Y-%m-%d %H:%M:%S')  ->  \$GRCFILE ====" >> "$LOG_DIR/gnuradio.log"
+exec gnuradio-companion "\$GRCFILE" 2>&1 | tee -a "$LOG_DIR/gnuradio.log"
+GREOF
+chmod +x "$GR_LAUNCHER"
+
 info "Log installazione : $INSTALL_LOG"
+info "Traccia comandi   : $DEBUG_LOG"
 info "Log telive (uso)  : /tetra/log/telive.log  (link: $LOG_DIR/telive-runtime.log)"
 info "Log ricevitore    : $LOG_DIR/receiver.log  (via $RECV_LAUNCHER)"
+info "Log GNU Radio     : $LOG_DIR/gnuradio.log  (via $GR_LAUNCHER)"
 
 # ---------------------------------------------------------------------------
 # Fine
 # ---------------------------------------------------------------------------
-GRC="$TELIVE_DIR/gnuradio-companion/python3_based_gnuradio/telive_1ch_simple_gr310_udp_xmlrpc.grc"
 cat <<EOF
 
 ============================================================
  Installazione TELIVE-2 completata!
 ============================================================
 
-COME USARLO (tre terminali):
+COME USARLO (tre terminali) -- ogni comando registra tutto nei log:
 
  1) GNU Radio (sorgente dalla chiavetta -> UDP verso telive):
-      gnuradio-companion "$GRC"
+      "$TELIVE_DIR/run_gnuradio.sh"
+    (equivale a: gnuradio-companion "$GRC")
 
- 2) Ricevitore osmo (con log automatico in logs/receiver.log):
+ 2) Ricevitore osmo:
       "$OSMO_DIR/src/run_receiver.sh" 1
     (equivale a: cd "$OSMO_DIR/src" && ./receiver1udp 1)
 
@@ -287,9 +339,11 @@ COME USARLO (tre terminali):
 
 TUTTI I LOG (per monitorare gli errori) sono nella cartella:
       $LOG_DIR
-   - install_telive2.log   (installazione, questo script)
-   - receiver.log          (ricevitore osmo / gnuradio / tetra-rx)
-   - telive-runtime.log    (link a /tetra/log/telive.log)
+   - install_telive2.log         (installazione: output completo)
+   - install_telive2.debug.log   (installazione: traccia di ogni comando)
+   - gnuradio.log                (GNU Radio, via run_gnuradio.sh)
+   - receiver.log                (ricevitore osmo / tetra-rx, via run_receiver.sh)
+   - telive-runtime.log          (link a /tetra/log/telive.log)
 
 DECIFRATURA a chiave NOTA (TEA1, anche chiave 32-bit):
       ./tetra-rx -r -k <keyfile> -s /dev/stdin
