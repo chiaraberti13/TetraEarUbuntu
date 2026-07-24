@@ -21,8 +21,12 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 OSMO_REPO="https://github.com/sq5bpf/osmo-tetra-sq5bpf-2.git"
 TELIVE_REPO="https://github.com/sq5bpf/telive-2.git"
-OSMO_DIR="$HOME/osmo-tetra-sq5bpf-2"
-TELIVE_DIR="$HOME/telive-2"
+
+# Cartella contenitore: TUTTO sta qui dentro (sorgenti + log), cosi' non si
+# sparpaglia nella home. Si puo' cambiare con la variabile d'ambiente TELIVE2_HOME.
+TELIVE2_HOME="${TELIVE2_HOME:-$HOME/telive2}"
+OSMO_DIR="$TELIVE2_HOME/osmo-tetra-sq5bpf-2"
+TELIVE_DIR="$TELIVE2_HOME/telive-2"
 
 ETSI_URL="http://www.etsi.org/deliver/etsi_en/300300_300399/30039502/01.03.01_60/en_30039502v010301p0.zip"
 ETSI_MD5="a8115fe68ef8f8cc466f4192572a1e3e"
@@ -32,15 +36,14 @@ JOBS="$(nproc)"
 COMPAT_CFLAGS=""   # riempito da detect_compat_cflags dopo l'installazione di gcc
 
 # ---------------------------------------------------------------------------
-# Log: cartella 'logs/' accanto allo script, come per gli installer Python.
-# Log il piu' DETTAGLIATO possibile:
+# Log: cartella 'logs/' DENTRO il contenitore ($TELIVE2_HOME/logs), accanto ai
+# sorgenti. Log il piu' DETTAGLIATO possibile:
 #   - logs/install_telive2.log        -> tutto l'output (stdout+stderr) a schermo
 #   - logs/install_telive2.debug.log  -> traccia di OGNI comando eseguito
 #                                        (xtrace, con orario e numero di riga)
 # cosi' e' possibile ricostruire qualunque errore dell'installazione.
 # ---------------------------------------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_DIR="$SCRIPT_DIR/logs"
+LOG_DIR="$TELIVE2_HOME/logs"
 INSTALL_LOG="$LOG_DIR/install_telive2.log"
 DEBUG_LOG="$LOG_DIR/install_telive2.debug.log"
 if mkdir -p "$LOG_DIR" 2>/dev/null; then
@@ -320,6 +323,9 @@ cat <<EOF
 ============================================================
  Installazione TELIVE-2 completata!
 ============================================================
+
+TUTTO e' raccolto in un'unica cartella: $TELIVE2_HOME
+   osmo-tetra-sq5bpf-2/   telive-2/   logs/
 
 COME USARLO (tre terminali) -- ogni comando registra tutto nei log:
 
