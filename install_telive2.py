@@ -615,6 +615,46 @@ def add_bin_to_path() -> None:
         logger.warning("[ATTENZIONE] Non ho potuto aggiornare il PATH (%s). Aggiungi a mano: %s", exc, line)
 
 
+def setup_runtime_logs() -> None:
+    """Raccoglie in logs/ anche i log dell'USO del programma (non solo
+    dell'installazione): collega il log di telive (/tetra/log/telive.log) nella
+    cartella logs/ e crea un launcher del ricevitore che salva tutto il suo
+    output in logs/receiver.log. Best-effort: eventuali errori non bloccano."""
+    step("Log di runtime (uso del programma)")
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Link del log runtime di telive dentro la cartella logs/ comune.
+        telive_link = LOG_DIR / "telive-runtime.log"
+        try:
+            if telive_link.is_symlink() or telive_link.exists():
+                telive_link.unlink()
+            telive_link.symlink_to(TETRA_DIR / "log" / "telive.log")
+        except OSError:
+            pass  # symlink non essenziale
+
+        # Launcher del ricevitore con log su file (tee).
+        recv_launcher = OSMO_DIR / "src" / "run_receiver.sh"
+        receiver_log = LOG_DIR / "receiver.log"
+        recv_launcher.write_text(
+            "#!/usr/bin/env bash\n"
+            "# Avvia il ricevitore osmo registrando TUTTO l'output in:\n"
+            f"#   {receiver_log}\n"
+            "# Uso:  ./run_receiver.sh [RXID]   (RXID predefinito: 1)\n"
+            f'cd "{OSMO_DIR / "src"}"\n'
+            f'echo "==== receiver $(date \'+%Y-%m-%d %H:%M:%S\') ====" >> "{receiver_log}"\n'
+            f'exec ./receiver1udp "${{1:-1}}" 2>&1 | tee -a "{receiver_log}"\n',
+            encoding="utf-8",
+        )
+        recv_launcher.chmod(recv_launcher.stat().st_mode | 0o111)
+
+        logger.info("[OK] Log installazione : %s", LOG_FILE)
+        logger.info("[OK] Log telive (uso)  : %s  (link: %s)", TETRA_DIR / "log" / "telive.log", telive_link)
+        logger.info("[OK] Log ricevitore    : %s  (via %s)", receiver_log, recv_launcher)
+    except OSError as exc:
+        logger.warning("[ATTENZIONE] Non ho potuto preparare i log di runtime (%s).", exc)
+
+
 # ============================================================
 # VERIFICA / RIEPILOGO
 # ============================================================
@@ -688,7 +728,10 @@ def verify_and_summary(completed_install: bool = True) -> bool:
     logger.info(" NOTA: si DECIFRA solo con chiave gia' nota. Questi strumenti non craccano il TETRA.")
 
     logger.info("")
-    logger.info(" Log completo in: %s", LOG_FILE)
+    logger.info(" TUTTI I LOG (per monitorare gli errori) sono in: %s", LOG_DIR)
+    logger.info("   - install_telive2.log   (installazione)")
+    logger.info("   - receiver.log          (ricevitore osmo, via src/run_receiver.sh)")
+    logger.info("   - telive-runtime.log    (link a /tetra/log/telive.log)")
     if not all_ok:
         logger.warning(
             "\n[NOTA] Alcuni componenti non risultano presenti (vedi sopra). Consulta "
@@ -742,6 +785,7 @@ def main() -> int:
 
         setup_tetra_dir()
         add_bin_to_path()
+        setup_runtime_logs()
 
         all_ok = verify_and_summary()
         return 0 if all_ok else 1
