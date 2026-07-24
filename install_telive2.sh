@@ -31,6 +31,21 @@ UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrom
 JOBS="$(nproc)"
 COMPAT_CFLAGS=""   # riempito da detect_compat_cflags dopo l'installazione di gcc
 
+# ---------------------------------------------------------------------------
+# Log: cartella 'logs/' accanto allo script, come per gli installer Python.
+# TUTTO l'output (a schermo) viene anche salvato in logs/install_telive2.log,
+# cosi' e' possibile ricostruire ogni errore dell'installazione.
+# ---------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOG_DIR="$SCRIPT_DIR/logs"
+INSTALL_LOG="$LOG_DIR/install_telive2.log"
+if mkdir -p "$LOG_DIR" 2>/dev/null; then
+  # sdoppia stdout+stderr: a schermo e nel file di log (append).
+  exec > >(tee -a "$INSTALL_LOG") 2>&1
+  echo "==== install_telive2.sh -- $(date '+%Y-%m-%d %H:%M:%S') ===="
+  echo "Log installazione: $INSTALL_LOG"
+fi
+
 step() { echo; echo "============================================================"; echo " $*"; echo "============================================================"; }
 info() { echo "  -> $*"; }
 
@@ -216,6 +231,36 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 8) Log di runtime (uso del programma)
+# ---------------------------------------------------------------------------
+# Oltre al log dell'installazione, raccogliamo in un solo posto anche i log
+# dell'USO: telive scrive gia' in /tetra/log/telive.log (lo colleghiamo nella
+# cartella logs/), e creiamo un launcher del ricevitore che salva tutto il suo
+# output in logs/receiver.log (dove compaiono gli errori di gnuradio/tetra-rx).
+step "8) Log di runtime (uso del programma)"
+mkdir -p "$LOG_DIR"
+
+# link del log runtime di telive dentro la cartella logs/ comune
+ln -sf /tetra/log/telive.log "$LOG_DIR/telive-runtime.log" 2>/dev/null || true
+
+# launcher del ricevitore con log su file (tee: a schermo e in logs/receiver.log)
+RECV_LAUNCHER="$OSMO_DIR/src/run_receiver.sh"
+cat > "$RECV_LAUNCHER" <<RUNEOF
+#!/usr/bin/env bash
+# Avvia il ricevitore osmo registrando TUTTO l'output in:
+#   $LOG_DIR/receiver.log
+# Uso:  ./run_receiver.sh [RXID]   (RXID predefinito: 1)
+cd "$OSMO_DIR/src"
+echo "==== receiver \$(date '+%Y-%m-%d %H:%M:%S') ====" >> "$LOG_DIR/receiver.log"
+exec ./receiver1udp "\${1:-1}" 2>&1 | tee -a "$LOG_DIR/receiver.log"
+RUNEOF
+chmod +x "$RECV_LAUNCHER"
+
+info "Log installazione : $INSTALL_LOG"
+info "Log telive (uso)  : /tetra/log/telive.log  (link: $LOG_DIR/telive-runtime.log)"
+info "Log ricevitore    : $LOG_DIR/receiver.log  (via $RECV_LAUNCHER)"
+
+# ---------------------------------------------------------------------------
 # Fine
 # ---------------------------------------------------------------------------
 GRC="$TELIVE_DIR/gnuradio-companion/python3_based_gnuradio/telive_1ch_simple_gr310_udp_xmlrpc.grc"
@@ -230,14 +275,21 @@ COME USARLO (tre terminali):
  1) GNU Radio (sorgente dalla chiavetta -> UDP verso telive):
       gnuradio-companion "$GRC"
 
- 2) Ricevitore osmo:
-      cd "$OSMO_DIR/src" && ./receiver1udp 1
+ 2) Ricevitore osmo (con log automatico in logs/receiver.log):
+      "$OSMO_DIR/src/run_receiver.sh" 1
+    (equivale a: cd "$OSMO_DIR/src" && ./receiver1udp 1)
 
  3) Interfaccia telive:
       cd "$TELIVE_DIR" && ./telive
 
  Ascolto voce: i file .out finiscono in /tetra/out
       tplay /tetra/out/<file>.out
+
+TUTTI I LOG (per monitorare gli errori) sono nella cartella:
+      $LOG_DIR
+   - install_telive2.log   (installazione, questo script)
+   - receiver.log          (ricevitore osmo / gnuradio / tetra-rx)
+   - telive-runtime.log    (link a /tetra/log/telive.log)
 
 DECIFRATURA a chiave NOTA (TEA1, anche chiave 32-bit):
       ./tetra-rx -r -k <keyfile> -s /dev/stdin
