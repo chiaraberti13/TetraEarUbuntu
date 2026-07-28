@@ -1629,6 +1629,7 @@ def verify_installation() -> None:
             logger.error("[FALLITO] Binario codec mancante o non eseguibile: %s", binary_path)
             all_ok = False
 
+    verify_decode_patches()   # conferma che le patch di decodifica sono applicate
     verify_pyrtlsdr_import()  # controlla il mismatch libreria/pyrtlsdr
     check_rtl_sdr_dongle()    # solo informativo, non blocca l'installazione
 
@@ -1644,6 +1645,60 @@ def verify_installation() -> None:
     logger.info("   source .venv/bin/activate")
     logger.info("   python -m tetraear -f 392.225")
     logger.info("========================================================")
+
+
+def verify_decode_patches() -> None:
+    """
+    Conferma che le patch CRITICHE per la decodifica siano davvero finite nel
+    sorgente installato. Serve a chiudere un buco insidioso: se le "ancore" di
+    patch_tetraear_source_bugs()/patch_voice_codec_timeout() non combaciano (es.
+    installazione con un TETRAEAR_REF diverso dalla v2.3 fissata, o l'upstream
+    e' cambiato), quelle funzioni emettono solo un warning e l'installazione
+    prosegue mostrando comunque "completata con successo": l'utente si ritrova
+    TetraEar che "sembra non decodificare" senza alcun indizio sul perche'.
+
+    Questo controllo NON modifica nulla e NON blocca l'installazione (un ref
+    personalizzato puo' legittimamente differire): si limita ad avvisare in
+    modo evidente cosi' la causa e' subito visibile nei log.
+    """
+    modern = TETRAEAR_ROOT / "tetraear" / "ui" / "modern.py"
+    if modern.is_file():
+        text = modern.read_text(encoding="utf-8", errors="ignore")
+        # L'unica occorrenza di 'self.signal_processor' e' il bug che impedisce
+        # la decodifica: se e' ancora li', la patch NON e' stata applicata.
+        if "self.signal_processor" in text:
+            logger.warning(
+                "[ATTENZIONE] La patch di decodifica principale NON risulta "
+                "applicata in tetraear/ui/modern.py (e' ancora presente il bug "
+                "'self.signal_processor'): TetraEar NON decodifichera'. Riesegui "
+                "'python3 install_linux.py --repair'. Se hai usato un "
+                "TETRAEAR_REF diverso dalla v2.3, la struttura del file a monte "
+                "potrebbe essere cambiata e la patch va aggiornata."
+            )
+        # 'if self.tch_assembler:' non deve piu' esistere: va reso sicuro con
+        # getattr(...), altrimenti il path vocale TCH va in AttributeError.
+        elif "if self.tch_assembler:" in text:
+            logger.warning(
+                "[ATTENZIONE] L'accesso a 'tch_assembler' in modern.py non e' "
+                "stato reso sicuro: la decodifica vocale puo' fallire. Riesegui "
+                "'python3 install_linux.py --repair'."
+            )
+        else:
+            logger.info("[OK] Patch di decodifica presenti in modern.py.")
+
+    voice = TETRAEAR_ROOT / "tetraear" / "audio" / "voice.py"
+    if voice.is_file():
+        # Il timeout aggressivo (5s) scarta frame validi su macchine lente/a
+        # freddo: se la patch non c'e', la voce puo' "sparire" a tratti.
+        if "_CODEC_TIMEOUT" in voice.read_text(encoding="utf-8", errors="ignore"):
+            logger.info("[OK] Timeout del codec configurabile presente in voice.py.")
+        else:
+            logger.warning(
+                "[ATTENZIONE] La patch del timeout del codec non risulta "
+                "applicata in tetraear/audio/voice.py: su sistemi lenti alcuni "
+                "frame vocali potrebbero venire scartati. Riesegui "
+                "'python3 install_linux.py --repair'."
+            )
 
 
 def verify_pyrtlsdr_import() -> None:
