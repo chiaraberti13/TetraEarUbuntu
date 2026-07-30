@@ -761,6 +761,16 @@ def verify_and_summary(completed_install: bool = True) -> bool:
 
     logger.info("")
     logger.info("=" * 60)
+    logger.info(" Pannello Network Info (PASSIVO: MCC/MNC/LA/Colour Code/AIE...)")
+    logger.info("=" * 60)
+    logger.info(" Mostra i parametri di rete trasmessi in chiaro nel broadcast TETRA,")
+    logger.info(" leggendo l'output del ricevitore. Non decifra nulla. Avvio:")
+    logger.info("      ./avvia_netscanner.sh 392.225")
+    logger.info(" Calcolo antenna (senza chiavetta):")
+    logger.info("      python3 tetra_netscanner.py --antenna 392.225")
+
+    logger.info("")
+    logger.info("=" * 60)
     logger.info(" DECIFRATURA a chiave NOTA (TEA1, anche chiave 32-bit)")
     logger.info("=" * 60)
     logger.info(" Il ricevitore decifra se gli passi un keyfile con la chiave GIA' nota:")
@@ -789,6 +799,36 @@ def verify_and_summary(completed_install: bool = True) -> bool:
 
 
 # ============================================================
+# PANNELLO NETWORK INFO (tetra_netscanner.py)
+# ============================================================
+
+def run_netscanner(skip: bool) -> None:
+    """Avvia in AUTOMATICO il wiring del pannello passivo Network Info
+    (tetra_netscanner.py), se presente accanto a questo script. E' best-effort:
+    viene eseguito DOPO che il ricevitore e' compilato, cosi' puo' leggerne
+    l'output. Un errore qui non compromette la catena TELIVE-2. Si disattiva
+    con --no-netscanner. Il pannello e' PASSIVO: mostra solo i metadati di rete
+    (MCC/MNC/LA/Colour Code/portante/AIE/security class), non decifra nulla."""
+    script = INSTALLER_DIR / "install_tetra_netscanner.py"
+    if skip:
+        logger.info("[INFO] Pannello Network Info saltato (--no-netscanner).")
+        return
+    if not script.is_file():
+        logger.info("[INFO] install_tetra_netscanner.py non presente: salto il pannello Network Info.")
+        return
+
+    step("Preparo anche il pannello Network Info (passivo: MCC/MNC/LA/AIE...)")
+    logger.info("Avvio %s (log in logs/install_netscanner.log) ...", script.name)
+    result = subprocess.run([sys.executable, str(script)])
+    if result.returncode != 0:
+        logger.warning(
+            "[ATTENZIONE] Il wiring del pannello Network Info ha segnalato un "
+            "problema (vedi logs/install_netscanner.log). La catena TELIVE-2 "
+            "resta comunque installata e funzionante."
+        )
+
+
+# ============================================================
 # MAIN
 # ============================================================
 
@@ -803,6 +843,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--no-gnuradio", action="store_true",
         help="Non installare GNU Radio via apt (usalo se ce l'hai gia')",
+    )
+    parser.add_argument(
+        "--no-netscanner", action="store_true",
+        help="Non preparare il pannello passivo Network Info (tetra_netscanner.py)",
     )
     return parser.parse_args()
 
@@ -837,6 +881,10 @@ def main() -> int:
         setup_runtime_logs()
 
         all_ok = verify_and_summary()
+
+        # Il ricevitore e' pronto: collego anche il pannello passivo Network Info,
+        # che ne legge l'output per mostrare i metadati di rete (MCC/MNC/LA/AIE...).
+        run_netscanner(args.no_netscanner)
         return 0 if all_ok else 1
 
     except InstallError:

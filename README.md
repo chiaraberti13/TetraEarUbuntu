@@ -332,6 +332,52 @@ up automatically via WSLg on Windows 11 (on Windows 10 you need an X server).
 
 ---
 
+### 📶 TETRA Network Scanner — passive network-info panel
+
+Inspired by the *"Interception of TETRA radio"* write-up, whose SDR# plugin's
+distinctive feature is a **passive panel of the network's broadcast metadata**.
+TetraEar decodes voice/text frames but shows **none** of those fields; this
+companion tool adds them by reading the output of the TELIVE-2 receiver
+(`tetra-rx`, built by `install_telive2.py`).
+
+It displays, live: **MCC / MNC / MNI**, **Location Area**, **Colour Code**,
+operating mode, **main carrier** (+ neighbour cells seen), the **🔓/🔐 Air
+Interface Encryption (AIE)** status, **Security Class**, **Cipher Key ID / TEA
+type**, plus an **antenna-length calculator** (the ANT-500 tip from the
+article). It reuses the same `KEY:VALUE` tokens (`MCC:`, `MNC:`, `LA:`,
+`CCODE:`, `CRYPT:`, `ENC:`…) that `telive` itself parses, so it stays robust.
+
+> ✅ It is **prepared automatically** at the end of `install_telive2.py` (skip
+> with `--no-netscanner`). You can also wire it up on its own — nothing heavy is
+> compiled, it's pure Python:
+>
+> ```bash
+> python3 install_tetra_netscanner.py            # verify + create the launcher
+> python3 install_tetra_netscanner.py --check    # just report what's present
+> ```
+
+Usage:
+
+```bash
+# Auto: follows logs/receiver.log if present (coexists with telive), else runs the receiver
+./avvia_netscanner.sh 392.225
+# Drive the receiver directly:
+python3 tetra_netscanner.py --run -f 392.225
+# Coexist with a running telive session (tail its receiver log):
+python3 tetra_netscanner.py --attach-file logs/receiver.log --follow
+# No hardware needed:
+python3 tetra_netscanner.py --antenna 392.225     # antenna-length calculator
+python3 tetra_netscanner.py --self-test           # exercise the parser
+```
+
+> ⚠️ **Passive & read-only.** The scanner only *displays* broadcast metadata and
+> whether encryption is on — it performs **no decryption and no key recovery**
+> (known-key decryption remains TELIVE-2's job). It shows real values only where
+> the receiver actually decodes them, on a channel with enough signal. Use only
+> where permitted by law (see [DISCLAIMER](DISCLAIMER.md)).
+
+---
+
 ### 🪟 Windows
 
 Tested on **Windows 10** and **Windows 11** (64-bit).
@@ -774,6 +820,54 @@ python install_telive2_windows.py --guide-only REM stampa solo i passi per abili
 Se WSL non è ancora attivo, stampa la configurazione iniziale (`wsl --install
 -d Ubuntu`, riavvio, creazione utente) e poi lo rilanci. La GUI di GNU Radio
 compare automaticamente via WSLg su Windows 11 (su Windows 10 serve un server X).
+
+---
+
+### 📶 TETRA Network Scanner — pannello passivo di rete
+
+Ispirato all'articolo *"Interception of TETRA radio"*, la cui funzione
+distintiva (nel plugin per SDR#) è un **pannello passivo dei metadati di rete**
+trasmessi nel broadcast TETRA. TetraEar decodifica la voce/testo ma **non**
+mostra quei campi; questo strumento complementare li aggiunge leggendo l'output
+del ricevitore TELIVE-2 (`tetra-rx`, compilato da `install_telive2.py`).
+
+Mostra in tempo reale: **MCC / MNC / MNI**, **Location Area**, **Colour Code**,
+modo operativo, **portante principale** (+ celle vicine viste), lo stato
+**🔓/🔐 Air Interface Encryption (AIE)**, la **Security Class**, il **Cipher Key
+ID / tipo TEA**, più un **calcolatore della lunghezza d'antenna** (il consiglio
+sull'ANT-500 citato nell'articolo). Usa gli stessi token `KEY:VALUE` (`MCC:`,
+`MNC:`, `LA:`, `CCODE:`, `CRYPT:`, `ENC:`…) che analizza `telive`, così resta
+robusto.
+
+> ✅ Viene **preparato in automatico** alla fine di `install_telive2.py` (per
+> saltarlo: `--no-netscanner`). Puoi comunque collegarlo da solo — non compila
+> nulla di pesante, è Python puro:
+>
+> ```bash
+> python3 install_tetra_netscanner.py            # verifica + crea il launcher
+> python3 install_tetra_netscanner.py --check    # controlla soltanto cosa c'è
+> ```
+
+Uso:
+
+```bash
+# Automatico: segue logs/receiver.log se presente (convive con telive), altrimenti avvia il ricevitore
+./avvia_netscanner.sh 392.225
+# Avvia direttamente il ricevitore:
+python3 tetra_netscanner.py --run -f 392.225
+# Convivi con una sessione telive già attiva (segue il suo log del ricevitore):
+python3 tetra_netscanner.py --attach-file logs/receiver.log --follow
+# Senza chiavetta:
+python3 tetra_netscanner.py --antenna 392.225     # calcolo della lunghezza d'antenna
+python3 tetra_netscanner.py --self-test           # prova il parser
+```
+
+> ⚠️ **Passivo e in sola lettura.** Il pannello si limita a *mostrare* i metadati
+> di broadcast e se la cifratura è attiva — **non decifra nulla e non recupera
+> chiavi** (la decifratura a chiave nota resta compito di TELIVE-2). Mostra
+> valori reali solo dove il ricevitore li decodifica davvero, su un canale con
+> segnale sufficiente. Usa solo dove consentito dalla legge (vedi
+> [DISCLAIMER](DISCLAIMER.md)).
 
 ---
 

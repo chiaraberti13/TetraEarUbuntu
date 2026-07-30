@@ -316,6 +316,9 @@ def verify_and_summary(completed: bool = True) -> bool:
         logger.info("  - receiver:    cd .../osmo-tetra-sq5bpf-2/src && ./receiver1udp 1")
         logger.info("  - telive:      cd .../telive-2 && ./telive")
         logger.info("  - decifra:     ./tetra-rx -r -k <keyfile> -s   (chiave GIA' nota)")
+        logger.info("  - Network Info (PASSIVO, MCC/MNC/LA/AIE...): dentro Ubuntu (WSL)")
+        logger.info("                 ./avvia_netscanner.sh 392.225")
+        logger.info("                 (viene preparato in automatico dall'installer Linux)")
     return built
 
 
