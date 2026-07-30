@@ -154,6 +154,14 @@ def format_antenna(freq_mhz: float) -> str:
     ]
     for name, mhz in BAND_PRESETS_MHZ.items():
         lines.append(f"  {mhz:7.1f} MHz  -  {name}")
+    lines += [
+        "",
+        "Parametri di ricezione TETRA (riferimento):",
+        "  Banda            : 380-430 MHz",
+        "  Spaziatura canali: 25 kHz tra le portanti",
+        "  Larghezza (WFM)  : ~=~ 32 kHz (impostazione tipo SDR#)",
+        "  Accesso          : TDMA, 4 canali duplex per portante",
+    ]
     return "\n".join(lines)
 
 
@@ -185,6 +193,7 @@ class NetworkInfo:
     encryption_type: Optional[int] = None        # valore ENC (algoritmo/KSG)
     security_class: Optional[int] = None
     cipher_key_id: Optional[int] = None
+    authentication_required: Optional[bool] = None   # "Authentication Required On Cell"
     # Contatori/attivita'
     total_messages: int = 0
     encrypted_events: int = 0
@@ -241,6 +250,7 @@ _BNCH_SYSINFO_RE = re.compile(
 )
 _PLAIN_SECCLASS_RE = re.compile(r"security[_ ]?class[\s:=]+(\d+)", re.IGNORECASE)
 _PLAIN_COLOUR_RE = re.compile(r"colou?r[_ ]?code[\s:=]+(\d+)", re.IGNORECASE)
+_PLAIN_AUTH_RE = re.compile(r"authentication\s+required", re.IGNORECASE)
 
 
 def _to_int(value: str) -> Optional[int]:
@@ -303,6 +313,12 @@ class NetInfoParser:
             info.security_class = _to_int(tokens.get("SECCLASS") or tokens.get("SECURITY_CLASS"))
         if "CKID" in tokens or "CIPHER_KEY_ID" in tokens:
             info.cipher_key_id = _to_int(tokens.get("CKID") or tokens.get("CIPHER_KEY_ID"))
+        for akey in ("AUTH", "AUTHREQ", "AUTHENTICATION"):
+            if akey in tokens:
+                av = _to_int(tokens[akey])
+                if av is not None:
+                    info.authentication_required = bool(av)
+                break
         if "SSI" in tokens:
             info.last_ssi = tokens["SSI"]
 
@@ -358,6 +374,8 @@ class NetInfoParser:
         m = _PLAIN_COLOUR_RE.search(line)
         if m:
             info.colour_code = _to_int(m.group(1))
+        if _PLAIN_AUTH_RE.search(line):
+            info.authentication_required = True
 
 
 def _normalize_freq_hz(value: int) -> int:
@@ -471,6 +489,12 @@ def _fmt(value) -> str:
     return "-" if value is None else str(value)
 
 
+def _fmt_bool(value: Optional[bool]) -> str:
+    if value is None:
+        return "-"
+    return "si'" if value else "no"
+
+
 def render_plain(info: NetworkInfo, freq_mhz: Optional[float]) -> str:
     lock = "??"
     if info.aie_enabled is True:
@@ -490,6 +514,7 @@ def render_plain(info: NetworkInfo, freq_mhz: Optional[float]) -> str:
         f" Algoritmo        : {info.tea_label()}",
         f" Security class   : {info.security_class_label()}",
         f" Cipher Key ID    : {_fmt(info.cipher_key_id)}",
+        f" Auth. su cella   : {_fmt_bool(info.authentication_required)}",
         "------------------------ ATTIVITA' -------------------------",
         f" Messaggi totali  : {info.total_messages}"
         f"  (cifrati {info.encrypted_events} / chiari {info.clear_events})",
@@ -598,7 +623,8 @@ def run_tui_loop(source: Iterator[str], freq_mhz: Optional[float]) -> None:
         y += 1
         _line(stdscr, curses_mod, y, "Algoritmo", info.tea_label()); y += 1
         _line(stdscr, curses_mod, y, "Security class", info.security_class_label()); y += 1
-        _line(stdscr, curses_mod, y, "Cipher Key ID", _fmt(info.cipher_key_id)); y += 2
+        _line(stdscr, curses_mod, y, "Cipher Key ID", _fmt(info.cipher_key_id)); y += 1
+        _line(stdscr, curses_mod, y, "Auth. su cella", _fmt_bool(info.authentication_required)); y += 2
 
         _line(stdscr, curses_mod, y, "Messaggi", f"{info.total_messages}  (enc {info.encrypted_events}/clr {info.clear_events})"); y += 1
         _line(stdscr, curses_mod, y, "Ultimo SSI", _fmt(info.last_ssi)); y += 1
@@ -623,7 +649,7 @@ def run_tui_loop(source: Iterator[str], freq_mhz: Optional[float]) -> None:
 # Righe di esempio nel formato reale emesso dal ricevitore osmo-tetra-sq5bpf-2
 # (i FUNC sono illustrativi: il parser e' agnostico al FUNC ed estrae i token).
 _FIXTURE_LINES = [
-    "TETMON_begin FUNC:NETINFO MCC:222 MNC:1 LA:1234 CCODE:12 DLF:392225000 ULF:382225000 RX:1 TETMON_end",
+    "TETMON_begin FUNC:NETINFO MCC:222 MNC:1 LA:1234 CCODE:12 DLF:392225000 ULF:382225000 AUTH:1 RX:1 TETMON_end",
     "BNCH SYSINFO (DL 392225000 Hz, UL 382225000 Hz), service_details 0x1234",
     "TETMON_begin FUNC:ENCINFO1 CRYPT:1 ENC:03 RX:1 TETMON_end",
     "TETMON_begin FUNC:CALL SSI:00012345 IDX:001 IDT:0 ENCR:1 RX:1 TETMON_end",
@@ -646,6 +672,7 @@ def run_self_test() -> int:
         "AIE=on": info.aie_enabled is True,
         "EncType=3(TEA3)": info.encryption_type == 3,
         "SecurityClass=3": info.security_class == 3,
+        "AuthRequired=on": info.authentication_required is True,
         "SSI parsed": info.last_ssi == "00012345",
         "OperatingMode set": info.operating_mode == "Voice+Data",
         "Cells>=1": len(info.cells) >= 1,

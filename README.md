@@ -343,8 +343,8 @@ companion tool adds them by reading the output of the TELIVE-2 receiver
 It displays, live: **MCC / MNC / MNI**, **Location Area**, **Colour Code**,
 operating mode, **main carrier** (+ neighbour cells seen), the **🔓/🔐 Air
 Interface Encryption (AIE)** status, **Security Class**, **Cipher Key ID / TEA
-type**, plus an **antenna-length calculator** (the ANT-500 tip from the
-article). It reuses the same `KEY:VALUE` tokens (`MCC:`, `MNC:`, `LA:`,
+type**, the **authentication-required-on-cell** flag, plus an **antenna-length
+calculator** (the ANT-500 tip from the article). It reuses the same `KEY:VALUE` tokens (`MCC:`, `MNC:`, `LA:`,
 `CCODE:`, `CRYPT:`, `ENC:`…) that `telive` itself parses, so it stays robust.
 
 > ✅ It is **prepared automatically** at the end of `install_telive2.py` (skip
@@ -847,8 +847,9 @@ del ricevitore TELIVE-2 (`tetra-rx`, compilato da `install_telive2.py`).
 Mostra in tempo reale: **MCC / MNC / MNI**, **Location Area**, **Colour Code**,
 modo operativo, **portante principale** (+ celle vicine viste), lo stato
 **🔓/🔐 Air Interface Encryption (AIE)**, la **Security Class**, il **Cipher Key
-ID / tipo TEA**, più un **calcolatore della lunghezza d'antenna** (il consiglio
-sull'ANT-500 citato nell'articolo). Usa gli stessi token `KEY:VALUE` (`MCC:`,
+ID / tipo TEA**, il flag **autenticazione richiesta sulla cella**, più un
+**calcolatore della lunghezza d'antenna** (il consiglio sull'ANT-500 citato
+nell'articolo). Usa gli stessi token `KEY:VALUE` (`MCC:`,
 `MNC:`, `LA:`, `CCODE:`, `CRYPT:`, `ENC:`…) che analizza `telive`, così resta
 robusto.
 
