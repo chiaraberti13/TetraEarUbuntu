@@ -347,6 +347,24 @@ type**, the **authentication-required-on-cell** flag, plus an **antenna-length
 calculator** (the ANT-500 tip from the article). It reuses the same `KEY:VALUE` tokens (`MCC:`, `MNC:`, `LA:`,
 `CCODE:`, `CRYPT:`, `ENC:`…) that `telive` itself parses, so it stays robust.
 
+**Two ways to see it:**
+
+- **Inside the TetraEar GUI** — the main installer (`install_linux.py` /
+  `install_windows.py`) adds a **📶 Network Info tab** to the TetraEar window,
+  next to *Decoded Frames · Calls · … · Statistics*. Open it, pick a data source
+  (default: the receiver log), press **▶ Avvia** and the fields populate.
+  Already installed? Get the tab by re-running `python3 install_linux.py --repair`
+  (Windows: re-run the installer). The tab is passive and wrapped in a
+  `try/except`, so it can never prevent the app from starting.
+- **As the standalone tool** (`tetra_netscanner.py` / `avvia_netscanner.sh`),
+  documented below — it is the shared engine the GUI tab reuses.
+
+> ⚠️ **One RTL-SDR at a time.** The tab's *live* data comes from the TELIVE-2
+> receiver, which needs the dongle — so it can't run at the same instant as
+> TetraEar's own capture on a single dongle. The default *Log file* source
+> (tail `logs/receiver.log`) is what makes them coexist: run the TELIVE-2 chain
+> (or use a second dongle) and watch the tab.
+
 > ✅ It is **prepared automatically** at the end of `install_telive2.py` (skip
 > with `--no-netscanner`). You can also wire it up on its own — nothing heavy is
 > compiled, it's pure Python:
@@ -852,6 +870,26 @@ ID / tipo TEA**, il flag **autenticazione richiesta sulla cella**, più un
 nell'articolo). Usa gli stessi token `KEY:VALUE` (`MCC:`,
 `MNC:`, `LA:`, `CCODE:`, `CRYPT:`, `ENC:`…) che analizza `telive`, così resta
 robusto.
+
+**Due modi per vederlo:**
+
+- **Dentro la GUI di TetraEar** — l'installer principale (`install_linux.py` /
+  `install_windows.py`) aggiunge un **tab 📶 Network Info** alla finestra di
+  TetraEar, accanto a *Decoded Frames · Calls · … · Statistics*. Aprilo, scegli
+  la sorgente (default: il log del ricevitore), premi **▶ Avvia** e i campi si
+  popolano. Già installato? Ottieni il tab rilanciando
+  `python3 install_linux.py --repair` (su Windows rilancia l'installer). Il tab
+  è passivo ed è avvolto in un `try/except`, quindi non può mai impedire
+  l'avvio dell'app.
+- **Come tool standalone** (`tetra_netscanner.py` / `avvia_netscanner.sh`),
+  documentato qui sotto — è il motore condiviso che il tab della GUI riusa.
+
+> ⚠️ **Una sola chiavetta per volta.** I dati *live* del tab arrivano dal
+> ricevitore TELIVE-2, che ha bisogno della chiavetta: non può girare nello
+> stesso istante della cattura interna di TetraEar su un'unica chiavetta. La
+> sorgente predefinita *Log file* (segue `logs/receiver.log`) è ciò che li fa
+> convivere: avvia la catena TELIVE-2 (o usa una seconda chiavetta) e osserva
+> il tab.
 
 > ✅ Viene **preparato in automatico** alla fine di `install_telive2.py` (per
 > saltarlo: `--no-netscanner`). Puoi comunque collegarlo da solo — non compila

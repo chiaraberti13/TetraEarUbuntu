@@ -1342,6 +1342,84 @@ def patch_tetraear_source_bugs() -> None:
         logger.info("[OK] Nessuna modifica necessaria a modern.py.")
 
 
+def patch_tetraear_add_network_info() -> None:
+    """
+    Aggiunge alla GUI di TetraEar un tab "Network Info": un pannello PASSIVO
+    coi parametri di rete trasmessi in chiaro nel broadcast TETRA (MCC/MNC/LA/
+    Colour Code/modo/portante/AIE/Security Class/Cipher Key ID/autenticazione),
+    ispirato al plugin dell'articolo "Interception of TETRA radio". I dati
+    arrivano dal ricevitore TELIVE-2 'tetra-rx' (che decodifica il SYSINFO); il
+    parsing riusa lo stesso motore del tool standalone tetra_netscanner.py. Il
+    tab NON decifra nulla.
+
+    La patch:
+      1) copia il motore (tetra_netscanner.py) e il widget del tab
+         (tetra_netinfo_tab.py) dentro il pacchetto: tetraear/ui/
+         tetra_netinfo_backend.py e tetraear/ui/network_info_tab.py;
+      2) inietta in tetraear/ui/modern.py, dentro init_ui e subito dopo il tab
+         "Statistics", una riga che registra il tab.
+
+    Idempotente (sentinel "network_info_tab") e difensiva: se manca l'anchor
+    logga un avviso e salta; l'addTab e' avvolto in try/except cosi' non puo'
+    mai impedire l'avvio dell'app.
+    """
+    step("Aggiunta del tab 'Network Info' alla GUI di TetraEar")
+
+    ui_dir = TETRAEAR_ROOT / "tetraear" / "ui"
+    modern = ui_dir / "modern.py"
+    if not modern.is_file():
+        logger.info("[INFO] %s non trovato, salto il tab Network Info.", modern)
+        return
+
+    # 1) Copia il motore di parsing e il widget del tab nel pacchetto tetraear.
+    to_copy = {
+        INSTALLER_DIR / "tetra_netscanner.py": ui_dir / "tetra_netinfo_backend.py",
+        INSTALLER_DIR / "tetra_netinfo_tab.py": ui_dir / "network_info_tab.py",
+    }
+    for src, dst in to_copy.items():
+        if not src.is_file():
+            logger.warning(
+                "[ATTENZIONE] Manca %s: non installo il tab Network Info "
+                "(il tool standalone resta comunque disponibile).", src.name,
+            )
+            return
+        try:
+            shutil.copy2(src, dst)
+            logger.info("[OK] Copiato %s -> tetraear/ui/%s", src.name, dst.name)
+        except OSError as exc:
+            logger.warning("[ATTENZIONE] Copia di %s fallita (%s): salto il tab.", src.name, exc)
+            return
+
+    # 2) Registra il tab dentro init_ui, subito dopo il tab "Statistics".
+    content = modern.read_text(encoding="utf-8")
+    if "network_info_tab" in content:
+        logger.info("[OK] Tab Network Info gia' presente in modern.py.")
+        return
+    anchor = 'tabs.addTab(stats_widget, "\U0001f4ca Statistics")'
+    if anchor not in content:
+        logger.warning(
+            "[ATTENZIONE] Anchor del tab 'Statistics' non trovato in modern.py: "
+            "la struttura del sorgente a monte potrebbe essere cambiata. Non "
+            "aggiungo il tab (i moduli sono comunque copiati)."
+        )
+        return
+    injection = (
+        anchor + "\n"
+        "        # TetraEar Network Scanner: tab passivo dei metadati di rete\n"
+        "        # (SYSINFO via ricevitore TELIVE-2). Opzionale: mai bloccare l'avvio.\n"
+        "        try:\n"
+        "            from tetraear.ui.network_info_tab import NetworkInfoTab\n"
+        "            self.network_info_tab = NetworkInfoTab(self)\n"
+        '            tabs.addTab(self.network_info_tab, "\U0001f4f6 Network Info")\n'
+        "        except Exception as _nis_e:\n"
+        "            import logging as _nis_log\n"
+        '            _nis_log.getLogger("tetraear").warning("Network Info tab non caricato: %s", _nis_e)'
+    )
+    content = content.replace(anchor, injection, 1)
+    modern.write_text(content, encoding="utf-8")
+    logger.info("[OK] Tab 'Network Info' registrato in modern.py (init_ui).")
+
+
 def patch_voice_hide_codec_window() -> None:
     """
     Evita che ad OGNI frame decodificato si apra una finestra nera del codec.
@@ -1711,6 +1789,7 @@ def do_repair() -> None:
     patch_tetraear_source_bugs()
     patch_voice_hide_codec_window()
     patch_voice_codec_timeout()
+    patch_tetraear_add_network_info()
     patch_pyrtlsdr_dithering()
     install_tetra_codec_with_fallback()
     create_launchers()
@@ -1896,6 +1975,7 @@ def main() -> int:
         patch_tetraear_source_bugs()
         patch_voice_hide_codec_window()
         patch_voice_codec_timeout()
+        patch_tetraear_add_network_info()
         create_virtualenv_and_install_requirements()
         # La configurazione della chiavetta viene fatta PRIMA del codec:
         # il codec dipende da un download esterno (ETSI) che potrebbe
