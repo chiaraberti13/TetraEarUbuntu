@@ -370,6 +370,19 @@ python3 tetra_netscanner.py --antenna 392.225     # antenna-length calculator
 python3 tetra_netscanner.py --self-test           # exercise the parser
 ```
 
+**On Windows** the *live* panel runs under **WSL2**, exactly like the TELIVE-2
+chain: `install_telive2_windows.py` builds `tetra-rx` inside WSL and wires the
+scanner there automatically. It also drops a native **`Avvia NetScanner.bat`**
+on the Windows host (double-click, or pass a frequency) that launches the live
+panel through WSL, or shows the antenna calculator offline if WSL isn't present.
+The no-hardware features run on native Windows Python too:
+
+```bat
+python install_tetra_netscanner_windows.py        REM verify + create the .bat launcher
+python tetra_netscanner.py --antenna 392.225       REM antenna calculator (no hardware)
+python tetra_netscanner.py --self-test             REM exercise the parser
+```
+
 > ⚠️ **Passive & read-only.** The scanner only *displays* broadcast metadata and
 > whether encryption is on — it performs **no decryption and no key recovery**
 > (known-key decryption remains TELIVE-2's job). It shows real values only where
@@ -860,6 +873,19 @@ python3 tetra_netscanner.py --attach-file logs/receiver.log --follow
 # Senza chiavetta:
 python3 tetra_netscanner.py --antenna 392.225     # calcolo della lunghezza d'antenna
 python3 tetra_netscanner.py --self-test           # prova il parser
+```
+
+**Su Windows** il pannello *live* gira dentro **WSL2**, esattamente come la
+catena TELIVE-2: `install_telive2_windows.py` compila `tetra-rx` in WSL e ci
+collega il pannello in automatico. Crea inoltre sull'host Windows un launcher
+nativo **`Avvia NetScanner.bat`** (doppio clic, o passagli una frequenza) che
+avvia il pannello live via WSL, oppure mostra il calcolo antenna offline se WSL
+non c'è. Le funzioni senza chiavetta girano anche su Windows nativo:
+
+```bat
+python install_tetra_netscanner_windows.py        REM verifica + crea il launcher .bat
+python tetra_netscanner.py --antenna 392.225       REM calcolo antenna (senza hardware)
+python tetra_netscanner.py --self-test             REM prova il parser
 ```
 
 > ⚠️ **Passivo e in sola lettura.** Il pannello si limita a *mostrare* i metadati

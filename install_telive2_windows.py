@@ -269,6 +269,36 @@ def print_wsl_setup_guide() -> None:
 
 
 # ============================================================
+# PANNELLO NETWORK INFO (nativo Windows)
+# ============================================================
+
+def run_netscanner_windows(skip: bool) -> None:
+    """Prepara il launcher NATIVO del pannello Network Info sull'host Windows
+    (Avvia NetScanner.bat), oltre a quello gia' creato DENTRO WSL dall'installer
+    Linux. Best-effort: un errore qui non compromette la catena TELIVE-2.
+    Si disattiva con --no-netscanner."""
+    script = INSTALLER_DIR / "install_tetra_netscanner_windows.py"
+    if skip:
+        logger.info("[INFO] Pannello Network Info (nativo) saltato (--no-netscanner).")
+        return
+    if not script.is_file():
+        logger.info("[INFO] install_tetra_netscanner_windows.py non presente: salto il launcher nativo.")
+        return
+    step("Preparo anche il launcher nativo del pannello Network Info")
+    logger.info("Avvio %s ...", script.name)
+    try:
+        result = subprocess.run([sys.executable, str(script)])
+        if result.returncode != 0:
+            logger.warning(
+                "[ATTENZIONE] Il wiring nativo del pannello Network Info ha segnalato "
+                "un problema (vedi logs/install_netscanner.log). La catena TELIVE-2 "
+                "resta comunque a posto."
+            )
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.warning("[ATTENZIONE] Non ho potuto avviare %s (%s).", script.name, exc)
+
+
+# ============================================================
 # VERIFICA / RIEPILOGO
 # ============================================================
 
@@ -336,6 +366,8 @@ def parse_args() -> argparse.Namespace:
                         help="Stampa solo i passi guidati, senza eseguire la build")
     parser.add_argument("--no-gnuradio", action="store_true",
                         help="Passa --no-gnuradio all'installer Linux (GNU Radio gia' presente in WSL)")
+    parser.add_argument("--no-netscanner", action="store_true",
+                        help="Non preparare il pannello passivo Network Info (nativo Windows + WSL)")
     return parser.parse_args()
 
 
@@ -381,8 +413,16 @@ def main() -> int:
 
     logger.info("[OK] WSL2 disponibile. Distro trovate: %s", ", ".join(distros))
 
-    extra_args = ["--no-gnuradio"] if args.no_gnuradio else []
+    extra_args = []
+    if args.no_gnuradio:
+        extra_args.append("--no-gnuradio")
+    if args.no_netscanner:
+        extra_args.append("--no-netscanner")
     rc = run_in_wsl(extra_args)
+
+    # Oltre al wiring DENTRO WSL (fatto dall'installer Linux), prepara il
+    # launcher NATIVO del pannello Network Info sull'host Windows.
+    run_netscanner_windows(args.no_netscanner)
 
     ok = verify_and_summary()
     if rc != 0 and not ok:
