@@ -350,12 +350,21 @@ calculator** (the ANT-500 tip from the article). It reuses the same `KEY:VALUE` 
 **Two ways to see it:**
 
 - **Inside the TetraEar GUI** — the main installer (`install_linux.py` /
-  `install_windows.py`) adds a **📶 Network Info tab** to the TetraEar window,
-  next to *Decoded Frames · Calls · … · Statistics*. Open it, pick a data source
-  (default: the receiver log), press **▶ Avvia** and the fields populate.
-  Already installed? Get the tab by re-running `python3 install_linux.py --repair`
-  (Windows: re-run the installer). The tab is passive and wrapped in a
-  `try/except`, so it can never prevent the app from starting.
+  `install_windows.py`) adds a whole set of tabs to the TetraEar window, next to
+  *Decoded Frames · Calls · … · Statistics*:
+  - **📶 Network Info** — the passive metadata panel (MCC/MNC/LA/Colour Code/AIE/
+    Security Class/…); pick a source (default: the receiver log), press **▶ Avvia**.
+  - **🔓 Decrypt (TELIVE-2)** — chain status, a keyfile editor (incl. the TEA-1
+    32-bit key), and buttons to launch GNU Radio → receiver → telive and open the
+    decrypted-voice folder. Known-key only, no cracking.
+  - **📡 Decoders** — launch multimon-ng (POCSAG), dump1090 (ADS-B + web map) and
+    dsd-fme (DMR/P25) with the documented frequencies.
+  - **📚 Reference** — TETRA vs TETRA2, the TEA/TAA suites, the five TETRA:BURST
+    CVEs and all the source links.
+
+  Already installed? Get the tabs by re-running `python3 install_linux.py --repair`
+  (Windows: re-run the installer). Each tab is wrapped in a `try/except`, so it
+  can never prevent the app from starting.
 - **As the standalone tool** (`tetra_netscanner.py` / `avvia_netscanner.sh`),
   documented below — it is the shared engine the GUI tab reuses.
 
@@ -874,13 +883,23 @@ robusto.
 **Due modi per vederlo:**
 
 - **Dentro la GUI di TetraEar** — l'installer principale (`install_linux.py` /
-  `install_windows.py`) aggiunge un **tab 📶 Network Info** alla finestra di
-  TetraEar, accanto a *Decoded Frames · Calls · … · Statistics*. Aprilo, scegli
-  la sorgente (default: il log del ricevitore), premi **▶ Avvia** e i campi si
-  popolano. Già installato? Ottieni il tab rilanciando
-  `python3 install_linux.py --repair` (su Windows rilancia l'installer). Il tab
-  è passivo ed è avvolto in un `try/except`, quindi non può mai impedire
-  l'avvio dell'app.
+  `install_windows.py`) aggiunge un set di tab alla finestra di TetraEar,
+  accanto a *Decoded Frames · Calls · … · Statistics*:
+  - **📶 Network Info** — il pannello passivo dei metadati (MCC/MNC/LA/Colour
+    Code/AIE/Security Class/…); scegli la sorgente (default: il log del
+    ricevitore) e premi **▶ Avvia**.
+  - **🔓 Decrypt (TELIVE-2)** — stato della catena, editor del keyfile (inclusa
+    la chiave TEA-1 a 32 bit) e pulsanti per avviare GNU Radio → ricevitore →
+    telive e aprire la cartella della voce decifrata. Solo a chiave nota,
+    nessun cracking.
+  - **📡 Decoders** — avvia multimon-ng (POCSAG), dump1090 (ADS-B + mappa web) e
+    dsd-fme (DMR/P25) con le frequenze documentate.
+  - **📚 Reference** — TETRA vs TETRA2, le suite TEA/TAA, le cinque CVE
+    TETRA:BURST e tutti i link delle fonti.
+
+  Già installato? Ottieni i tab rilanciando `python3 install_linux.py --repair`
+  (su Windows rilancia l'installer). Ogni tab è avvolto in un `try/except`,
+  quindi non può mai impedire l'avvio dell'app.
 - **Come tool standalone** (`tetra_netscanner.py` / `avvia_netscanner.sh`),
   documentato qui sotto — è il motore condiviso che il tab della GUI riusa.
 

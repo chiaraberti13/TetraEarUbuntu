@@ -845,75 +845,98 @@ def patch_voice_codec_timeout() -> None:
     )
 
 
-def patch_tetraear_add_network_info() -> None:
+def patch_tetraear_add_toolkit() -> None:
     """
-    Aggiunge alla GUI di TetraEar un tab "Network Info": un pannello PASSIVO
-    coi parametri di rete trasmessi in chiaro nel broadcast TETRA (MCC/MNC/LA/
-    Colour Code/modo/portante/AIE/Security Class/Cipher Key ID/autenticazione),
-    ispirato al plugin dell'articolo "Interception of TETRA radio". I dati
-    arrivano dal ricevitore TELIVE-2 'tetra-rx' (che decodifica il SYSINFO); il
-    parsing riusa lo stesso motore del tool standalone tetra_netscanner.py. Il
-    tab NON decifra nulla.
+    Aggiunge alla GUI di TetraEar un set completo di tab, riusando gli strumenti
+    gia' presenti nel repo. Tutti PASSIVI / a chiave nota: nessun cracking.
 
-    Copia il motore (tetra_netscanner.py) e il widget del tab
-    (tetra_netinfo_tab.py) dentro il pacchetto (tetraear/ui/) e inietta in
-    tetraear/ui/modern.py, dentro init_ui e dopo il tab "Statistics", una riga
-    che registra il tab. Idempotente (sentinel "network_info_tab") e difensiva:
-    l'addTab e' avvolto in try/except, cosi' non puo' mai impedire l'avvio.
+      * Network Info -> metadati di rete (MCC/MNC/LA/Colour Code/AIE/...) dal
+                        ricevitore TELIVE-2 (motore tetra_netscanner.py)
+      * Decrypt      -> catena TELIVE-2: stato, editor keyfile (incl. TEA-1
+                        32-bit), avvio GNU Radio/ricevitore/telive, voce
+      * Decoders     -> multimon-ng / dump1090 / dsd-fme (modi in chiaro)
+      * Reference    -> TETRA vs TETRA2, TEA/TAA, CVE TETRA:BURST, link
+
+    Copia i moduli in tetraear/ui/ e inietta in tetraear/ui/modern.py, dentro
+    init_ui e dopo il tab "Statistics", un blocco che registra i tab. Ogni tab
+    e' avvolto in try/except: un errore non puo' mai impedire l'avvio dell'app.
+    Idempotente (sentinel "TetraEar Toolkit") e tollerante se l'anchor a monte
+    cambia (logga e salta). Sostituisce l'eventuale vecchia iniezione del solo
+    tab Network Info.
     """
-    step("Aggiunta del tab 'Network Info' alla GUI di TetraEar")
+    step("Aggiunta dei tab TETRA (Network Info, Decrypt, Decoders, Reference)")
 
     ui_dir = TETRAEAR_ROOT / "tetraear" / "ui"
     modern = ui_dir / "modern.py"
     if not modern.is_file():
-        logger.info("[INFO] %s non trovato, salto il tab Network Info.", modern)
+        logger.info("[INFO] %s non trovato, salto i tab della GUI.", modern)
         return
 
     to_copy = {
         INSTALLER_DIR / "tetra_netscanner.py": ui_dir / "tetra_netinfo_backend.py",
+        INSTALLER_DIR / "tetra_gui_common.py": ui_dir / "tetra_gui_common.py",
         INSTALLER_DIR / "tetra_netinfo_tab.py": ui_dir / "network_info_tab.py",
+        INSTALLER_DIR / "tetra_decrypt_tab.py": ui_dir / "tetra_decrypt_tab.py",
+        INSTALLER_DIR / "tetra_decoders_tab.py": ui_dir / "tetra_decoders_tab.py",
+        INSTALLER_DIR / "tetra_reference_tab.py": ui_dir / "tetra_reference_tab.py",
     }
     for src, dst in to_copy.items():
         if not src.is_file():
             logger.warning(
-                "[ATTENZIONE] Manca %s: non installo il tab Network Info "
-                "(il tool standalone resta comunque disponibile).", src.name,
+                "[ATTENZIONE] Manca %s: non installo i tab della GUI "
+                "(i tool standalone restano comunque disponibili).", src.name,
             )
             return
         try:
             shutil.copy2(src, dst)
             logger.info("[OK] Copiato %s -> tetraear/ui/%s", src.name, dst.name)
         except OSError as exc:
-            logger.warning("[ATTENZIONE] Copia di %s fallita (%s): salto il tab.", src.name, exc)
+            logger.warning("[ATTENZIONE] Copia di %s fallita (%s): salto i tab.", src.name, exc)
             return
 
     content = modern.read_text(encoding="utf-8")
-    if "network_info_tab" in content:
-        logger.info("[OK] Tab Network Info gia' presente in modern.py.")
+    if "TetraEar Toolkit" in content:
+        logger.info("[OK] Tab TETRA gia' presenti in modern.py.")
         return
+
+    # Rimuove l'eventuale vecchia iniezione del solo tab Network Info (upgrade).
+    old = re.compile(
+        r'\n[ \t]*# TetraEar Network Scanner: tab passivo.*?'
+        r'Network Info tab non caricato: %s", _nis_e\)',
+        re.DOTALL,
+    )
+    if old.search(content):
+        content = old.sub("", content)
+        logger.info("[OK] Rimossa la vecchia iniezione del solo tab Network Info.")
+
     anchor = 'tabs.addTab(stats_widget, "\U0001f4ca Statistics")'
     if anchor not in content:
         logger.warning(
             "[ATTENZIONE] Anchor del tab 'Statistics' non trovato in modern.py: "
             "la struttura del sorgente a monte potrebbe essere cambiata. Non "
-            "aggiungo il tab (i moduli sono comunque copiati)."
+            "aggiungo i tab (i moduli sono comunque copiati)."
         )
         return
     injection = (
         anchor + "\n"
-        "        # TetraEar Network Scanner: tab passivo dei metadati di rete\n"
-        "        # (SYSINFO via ricevitore TELIVE-2). Opzionale: mai bloccare l'avvio.\n"
-        "        try:\n"
-        "            from tetraear.ui.network_info_tab import NetworkInfoTab\n"
-        "            self.network_info_tab = NetworkInfoTab(self)\n"
-        '            tabs.addTab(self.network_info_tab, "\U0001f4f6 Network Info")\n'
-        "        except Exception as _nis_e:\n"
-        "            import logging as _nis_log\n"
-        '            _nis_log.getLogger("tetraear").warning("Network Info tab non caricato: %s", _nis_e)'
+        "        # === TetraEar Toolkit: tab aggiuntivi (passivi / a chiave nota) ===\n"
+        "        for _tt_mod, _tt_cls, _tt_lbl in (\n"
+        '            ("tetraear.ui.network_info_tab", "NetworkInfoTab", "\U0001f4f6 Network Info"),\n'
+        '            ("tetraear.ui.tetra_decrypt_tab", "DecryptTab", "\U0001f513 Decrypt (TELIVE-2)"),\n'
+        '            ("tetraear.ui.tetra_decoders_tab", "DecodersTab", "\U0001f4e1 Decoders"),\n'
+        '            ("tetraear.ui.tetra_reference_tab", "ReferenceTab", "\U0001f4da Reference"),\n'
+        "        ):\n"
+        "            try:\n"
+        "                import importlib as _tt_il\n"
+        "                _tt_widget = getattr(_tt_il.import_module(_tt_mod), _tt_cls)(self)\n"
+        "                tabs.addTab(_tt_widget, _tt_lbl)\n"
+        "            except Exception as _tt_e:\n"
+        "                import logging as _tt_log\n"
+        '                _tt_log.getLogger("tetraear").warning("Tab %s non caricato: %s", _tt_lbl, _tt_e)'
     )
     content = content.replace(anchor, injection, 1)
     modern.write_text(content, encoding="utf-8")
-    logger.info("[OK] Tab 'Network Info' registrato in modern.py (init_ui).")
+    logger.info("[OK] Tab TETRA (Network Info, Decrypt, Decoders, Reference) registrati in modern.py.")
 
 
 # ============================================================
@@ -1404,7 +1427,7 @@ def do_repair() -> None:
     patch_tetraear_source_bugs()
     patch_voice_hide_codec_window()
     patch_voice_codec_timeout()
-    patch_tetraear_add_network_info()
+    patch_tetraear_add_toolkit()
     patch_pyrtlsdr_dithering()
     ensure_msys2_toolchain()
     install_windows_rtlsdr_dll()
@@ -1590,7 +1613,7 @@ def main() -> int:
         patch_tetraear_source_bugs()
         patch_voice_hide_codec_window()
         patch_voice_codec_timeout()
-        patch_tetraear_add_network_info()
+        patch_tetraear_add_toolkit()
         create_virtualenv_and_install_requirements()
         install_windows_rtlsdr_dll()
         install_tetra_codec_with_fallback()
