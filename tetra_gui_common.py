@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -88,6 +89,25 @@ def validate_keyfile_text(text: str) -> tuple[bool, str]:
 def shell_quote(value) -> str:
     """Quoting robusto per inserire un valore in un comando shell."""
     return shlex.quote(str(value))
+
+
+# Maschera il valore della chiave nelle righe 'key ... key <hex>'. Lunghezza
+# fissa: non rivela la lunghezza reale della chiave.
+_KEY_SECRET_RE = re.compile(r"(\bkey\s+)([0-9a-fA-F]{2,})")
+_KEY_MASK = "•" * 8  # ••••••••
+
+
+def mask_keyfile_text(text: str) -> str:
+    """Restituisce il keyfile con i valori delle chiavi mascherati (per il
+    display). Le righe 'network' e la struttura restano intatte; solo il valore
+    esadecimale dopo la parola chiave 'key' viene sostituito con ••••••••."""
+    out = []
+    for line in text.splitlines():
+        if line.strip().lower().startswith("key"):
+            out.append(_KEY_SECRET_RE.sub(lambda m: m.group(1) + _KEY_MASK, line))
+        else:
+            out.append(line)
+    return "\n".join(out)
 
 
 # ============================================================

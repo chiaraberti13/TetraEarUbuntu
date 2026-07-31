@@ -23,13 +23,13 @@ from PyQt6.QtCore import QUrl
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel, QPushButton,
-    QPlainTextEdit, QLineEdit, QGroupBox, QMessageBox,
+    QPlainTextEdit, QLineEdit, QGroupBox, QMessageBox, QCheckBox,
 )
 
 from tetraear.ui.tetra_gui_common import (
     open_terminal, receiver_launcher, gnuradio_launcher, grc_file,
     telive_dir, keyfile_default, voice_out_dir, find_bin, repo_root,
-    set_app_status, shell_quote, validate_keyfile_text,
+    set_app_status, shell_quote, validate_keyfile_text, mask_keyfile_text,
 )
 
 _KEYFILE_TEMPLATE = (
@@ -93,16 +93,22 @@ class DecryptTab(QWidget):
         path_row.addWidget(QLabel("File:"))
         path_row.addWidget(self.keyfile_path, 1)
         kf_layout.addLayout(path_row)
+        # Le chiavi sono mascherate di default; il testo reale vive in _real_text.
+        self._real_text = ""
+        self._revealed = False
         self.keyfile_edit = QPlainTextEdit()
         self.keyfile_edit.setPlaceholderText(_KEYFILE_TEMPLATE)
         kf_layout.addWidget(self.keyfile_edit)
         btn_row = QHBoxLayout()
+        self.reveal_check = QCheckBox("👁 Mostra/Modifica chiavi")
+        self.reveal_check.toggled.connect(self._toggle_reveal)
         load_btn = QPushButton("Carica")
         load_btn.clicked.connect(self.load_keyfile)
         save_btn = QPushButton("Salva")
         save_btn.clicked.connect(self.save_keyfile)
         tea_btn = QPushButton("+ Chiave TEA-1 32-bit")
-        tea_btn.clicked.connect(lambda: self.keyfile_edit.appendPlainText(_TEA1_32_LINE.strip()))
+        tea_btn.clicked.connect(self._add_tea1_key)
+        btn_row.addWidget(self.reveal_check)
         for b in (load_btn, save_btn, tea_btn):
             btn_row.addWidget(b)
         btn_row.addStretch(1)
@@ -112,15 +118,15 @@ class DecryptTab(QWidget):
         # --- Avvio catena ----------------------------------------------------
         run_box = QGroupBox("Avvio catena (in terminale)")
         run_row = QHBoxLayout(run_box)
-        gr_btn = QPushButton("1) GNU Radio")
-        gr_btn.clicked.connect(self.launch_gnuradio)
-        rx_btn = QPushButton("2) Ricevitore (con keyfile)")
-        rx_btn.clicked.connect(self.launch_receiver)
-        tl_btn = QPushButton("3) telive")
-        tl_btn.clicked.connect(self.launch_telive)
+        self.gr_btn = QPushButton("1) GNU Radio")
+        self.gr_btn.clicked.connect(self.launch_gnuradio)
+        self.rx_btn = QPushButton("2) Ricevitore (con keyfile)")
+        self.rx_btn.clicked.connect(self.launch_receiver)
+        self.tl_btn = QPushButton("3) telive")
+        self.tl_btn.clicked.connect(self.launch_telive)
         out_btn = QPushButton("🔊 Voce decifrata (/tetra/out)")
         out_btn.clicked.connect(self.open_voice_dir)
-        for b in (gr_btn, rx_btn, tl_btn, out_btn):
+        for b in (self.gr_btn, self.rx_btn, self.tl_btn, out_btn):
             run_row.addWidget(b)
         root.addWidget(run_box)
 
@@ -134,7 +140,7 @@ class DecryptTab(QWidget):
 
     # -- Stato ---------------------------------------------------------------
     def refresh_status(self) -> None:
-        missing = False
+        missing = []
         for name, lbl in self.status_labels.items():
             found = find_bin(name)
             if found:
@@ -143,34 +149,81 @@ class DecryptTab(QWidget):
             else:
                 lbl.setText("❌")
                 lbl.setToolTip("non trovato")
-                missing = True
+                missing.append(name)
+
+        # Abilita i pulsanti solo se il relativo componente c'e' (diagnostica).
+        gr_ok = bool(gnuradio_launcher() or grc_file() or find_bin("gnuradio-companion"))
+        rx_ok = receiver_launcher() is not None
+        tl_ok = bool((telive_dir() and (telive_dir() / "telive").is_file()) or find_bin("telive"))
+        self._gate(self.gr_btn, gr_ok, "GNU Radio", "gnuradio-companion / flowgraph")
+        self._gate(self.rx_btn, rx_ok, "Ricevitore", "tetra-rx / receiver1udp")
+        self._gate(self.tl_btn, tl_ok, "telive", "telive")
+
         if missing:
             self.install_hint.setText(
-                "Manca qualcosa: compila la catena con "
+                "Mancano: <b>" + ", ".join(missing) + "</b>. Compila la catena con "
                 "<code>python3 install_telive2.py</code> "
                 "(su Windows: <code>python install_telive2_windows.py</code>)."
             )
         else:
             self.install_hint.setText("Catena TELIVE-2 pronta.")
 
+    @staticmethod
+    def _gate(btn, ok: bool, label: str, needs: str) -> None:
+        btn.setEnabled(ok)
+        btn.setToolTip("" if ok else f"{label} non disponibile: manca {needs}. Esegui install_telive2.py")
+
     # -- Keyfile -------------------------------------------------------------
     def _keyfile_path(self) -> Path:
         return Path(self.keyfile_path.text().strip() or "sample_keyfile")
+
+    # -- masking chiavi ------------------------------------------------------
+    def _render_keyfile(self) -> None:
+        """Mostra il testo reale (se rivelato, editabile) o mascherato (read-only)."""
+        if self._revealed:
+            self.keyfile_edit.setReadOnly(False)
+            self.keyfile_edit.setPlainText(self._real_text)
+        else:
+            self.keyfile_edit.setReadOnly(True)
+            self.keyfile_edit.setPlainText(mask_keyfile_text(self._real_text))
+
+    def _sync_real(self) -> None:
+        """Se l'editor e' in modalita' modifica, aggiorna il testo reale."""
+        if self._revealed:
+            self._real_text = self.keyfile_edit.toPlainText()
+
+    def _toggle_reveal(self, checked: bool) -> None:
+        if not checked:
+            self._sync_real()  # salva le modifiche prima di rimascherare
+        self._revealed = checked
+        self._render_keyfile()
+
+    def _add_tea1_key(self) -> None:
+        self._sync_real()
+        if self._real_text and not self._real_text.endswith("\n"):
+            self._real_text += "\n"
+        self._real_text += _TEA1_32_LINE.strip() + "\n"
+        # Rivela per far vedere cosa e' stato aggiunto.
+        self.reveal_check.setChecked(True)
+        self._revealed = True
+        self._render_keyfile()
 
     def load_keyfile(self) -> None:
         p = self._keyfile_path()
         try:
             if p.is_file():
-                self.keyfile_edit.setPlainText(p.read_text(encoding="utf-8", errors="ignore"))
+                self._real_text = p.read_text(encoding="utf-8", errors="ignore")
             else:
-                self.keyfile_edit.setPlainText(_KEYFILE_TEMPLATE)
+                self._real_text = _KEYFILE_TEMPLATE
         except OSError as exc:
-            self.keyfile_edit.setPlainText(_KEYFILE_TEMPLATE)
+            self._real_text = _KEYFILE_TEMPLATE
             QMessageBox.warning(self, "Keyfile", f"Non ho potuto leggere {p}: {exc}")
+        self._render_keyfile()
 
     def save_keyfile(self) -> None:
         p = self._keyfile_path()
-        text = self.keyfile_edit.toPlainText()
+        self._sync_real()
+        text = self._real_text
         ok, msg = validate_keyfile_text(text)
         if not ok:
             reply = QMessageBox.question(

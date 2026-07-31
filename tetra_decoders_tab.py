@@ -69,23 +69,23 @@ class DecodersTab(QWidget):
         pr = QHBoxLayout(pg)
         self.pager_freq = QLineEdit("439.9875")
         self.pager_freq.setMaximumWidth(120)
-        pbtn = QPushButton("▶ Avvia")
-        pbtn.clicked.connect(self.launch_pager)
+        self.pbtn = QPushButton("▶ Avvia")
+        self.pbtn.clicked.connect(self.launch_pager)
         pr.addWidget(QLabel("Frequenza (MHz):"))
         pr.addWidget(self.pager_freq)
-        pr.addWidget(pbtn)
+        pr.addWidget(self.pbtn)
         pr.addStretch(1)
         root.addWidget(pg)
 
         # ADS-B
         ag = QGroupBox("Aerei ADS-B 1090 MHz (dump1090)")
         ar = QHBoxLayout(ag)
-        abtn = QPushButton("▶ Avvia")
-        abtn.clicked.connect(self.launch_adsb)
+        self.abtn = QPushButton("▶ Avvia")
+        self.abtn.clicked.connect(self.launch_adsb)
         mapbtn = QPushButton("🌍 Mappa web (localhost:8080)")
         mapbtn.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("http://localhost:8080")))
         ar.addWidget(QLabel("Frequenza fissa 1090 MHz"))
-        ar.addWidget(abtn)
+        ar.addWidget(self.abtn)
         ar.addWidget(mapbtn)
         ar.addStretch(1)
         root.addWidget(ag)
@@ -95,11 +95,11 @@ class DecodersTab(QWidget):
         dr = QHBoxLayout(dg)
         self.dmr_freq = QLineEdit("446.09375")
         self.dmr_freq.setMaximumWidth(120)
-        dbtn = QPushButton("▶ Avvia")
-        dbtn.clicked.connect(self.launch_dmr)
+        self.dbtn = QPushButton("▶ Avvia")
+        self.dbtn.clicked.connect(self.launch_dmr)
         dr.addWidget(QLabel("Frequenza (MHz):"))
         dr.addWidget(self.dmr_freq)
-        dr.addWidget(dbtn)
+        dr.addWidget(self.dbtn)
         dr.addStretch(1)
         root.addWidget(dg)
 
@@ -112,17 +112,37 @@ class DecodersTab(QWidget):
         root.addStretch(1)
 
     def refresh_status(self) -> None:
-        missing = False
+        present = {}
+        missing = []
         for name, lbl in self.status_labels.items():
-            if find_bin(name):
+            found = find_bin(name)
+            present[name] = found is not None
+            if found:
                 lbl.setText("✅")
+                lbl.setToolTip(str(found))
             else:
                 lbl.setText("❌")
-                missing = True
+                lbl.setToolTip("non trovato")
+                missing.append(name)
+
+        # Abilita ogni decoder solo se i suoi binari ci sono.
+        self._gate(self.pbtn, present.get("multimon-ng") and present.get("rtl_fm"),
+                   "multimon-ng + rtl_fm")
+        self._gate(self.abtn, present.get("dump1090"), "dump1090")
+        self._gate(self.dbtn, present.get("dsd-fme") and present.get("rtl_fm"),
+                   "dsd-fme + rtl_fm")
+
         self.hint.setText(
-            "Manca qualcosa: installa con <code>python3 install_extra_decoders.py</code>."
+            "Mancano: <b>" + ", ".join(missing) + "</b>. Installa con "
+            "<code>python3 install_extra_decoders.py</code>."
             if missing else "Decoder pronti."
         )
+
+    @staticmethod
+    def _gate(btn, ok, needs: str) -> None:
+        ok = bool(ok)
+        btn.setEnabled(ok)
+        btn.setToolTip("" if ok else f"Manca: {needs}. Esegui install_extra_decoders.py")
 
     def _valid_freq(self, edit: QLineEdit):
         """Ritorna la frequenza validata (float) o None (con avviso a schermo).

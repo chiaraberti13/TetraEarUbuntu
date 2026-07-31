@@ -65,6 +65,21 @@ def test_keyfile(gc):
         check(not ok, f"keyfile non valido rifiutato: {bad!r}")
 
 
+def test_mask(gc):
+    print("mask_keyfile_text:")
+    text = (
+        "network mcc 0123 mnc 1337 ksg_type 1 security_class 2\n"
+        "key mcc 0123 mnc 1337 addr 00000000 key_type 16 key_num 0 key 12345678000000000000\n"
+    )
+    masked = gc.mask_keyfile_text(text)
+    check("12345678000000000000" not in masked, "hex della chiave nascosto")
+    check("•" in masked, "presenza del carattere di mascheramento")
+    check("network mcc 0123 mnc 1337" in masked, "riga network intatta")
+    check("key_type 16" in masked, "campi non-segreti intatti")
+    # la lunghezza non deve trapelare: maschera fissa a 8, chiave lunga 20
+    check(masked.count("•") == 8, "lunghezza chiave non rivelata (maschera fissa)")
+
+
 def test_parser(ns):
     print("NetInfoParser (fixture):")
     p = ns.NetInfoParser()
@@ -85,6 +100,7 @@ def main():
     ns = _load("tetra_netscanner")
     test_frequency(gc)
     test_keyfile(gc)
+    test_mask(gc)
     test_parser(ns)
     print()
     if _FAILS:
