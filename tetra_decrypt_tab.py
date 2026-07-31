@@ -29,6 +29,7 @@ from PyQt6.QtWidgets import (
 from tetraear.ui.tetra_gui_common import (
     open_terminal, receiver_launcher, gnuradio_launcher, grc_file,
     telive_dir, keyfile_default, voice_out_dir, find_bin, repo_root,
+    set_app_status,
 )
 
 _KEYFILE_TEMPLATE = (
@@ -179,6 +180,7 @@ class DecryptTab(QWidget):
     # -- Avvio ---------------------------------------------------------------
     def _run(self, command: str, cwd=None) -> None:
         ok, msg = open_terminal(command, cwd=cwd)
+        set_app_status(self.main_window, "TELIVE-2: " + msg)
         if not ok:
             QMessageBox.information(self, "Avvio", msg)
 

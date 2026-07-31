@@ -1376,6 +1376,7 @@ def patch_tetraear_add_toolkit() -> None:
         INSTALLER_DIR / "tetra_netinfo_tab.py": ui_dir / "network_info_tab.py",
         INSTALLER_DIR / "tetra_decrypt_tab.py": ui_dir / "tetra_decrypt_tab.py",
         INSTALLER_DIR / "tetra_decoders_tab.py": ui_dir / "tetra_decoders_tab.py",
+        INSTALLER_DIR / "tetra_antenna_tab.py": ui_dir / "tetra_antenna_tab.py",
         INSTALLER_DIR / "tetra_reference_tab.py": ui_dir / "tetra_reference_tab.py",
     }
     for src, dst in to_copy.items():
@@ -1392,50 +1393,73 @@ def patch_tetraear_add_toolkit() -> None:
             logger.warning("[ATTENZIONE] Copia di %s fallita (%s): salto i tab.", src.name, exc)
             return
 
-    # 2) Inietta il blocco dei tab in init_ui, dopo il tab "Statistics".
+    # 2) Inietta i tab in init_ui (dopo "Statistics") e l'etichetta di stato
+    #    nella barra Status. Strip+reinject = upgrade pulito e idempotente.
     content = modern.read_text(encoding="utf-8")
-    if "TetraEar Toolkit" in content:
-        logger.info("[OK] Tab TETRA gia' presenti in modern.py.")
-        return
+    original = content
 
-    # Rimuove l'eventuale vecchia iniezione del solo tab Network Info (upgrade).
-    old = re.compile(
+    old_single = re.compile(
         r'\n[ \t]*# TetraEar Network Scanner: tab passivo.*?'
         r'Network Info tab non caricato: %s", _nis_e\)',
         re.DOTALL,
     )
-    if old.search(content):
-        content = old.sub("", content)
-        logger.info("[OK] Rimossa la vecchia iniezione del solo tab Network Info.")
+    old_block = re.compile(
+        r'\n[ \t]*# === TetraEar Toolkit: tab aggiuntivi.*?'
+        r'Tab %s non caricato: %s", _tt_lbl, _tt_e\)',
+        re.DOTALL,
+    )
+    content = old_single.sub("", content)
+    content = old_block.sub("", content)
 
     anchor = 'tabs.addTab(stats_widget, "\U0001f4ca Statistics")'
-    if anchor not in content:
+    if anchor in content:
+        injection = (
+            anchor + "\n"
+            "        # === TetraEar Toolkit: tab aggiuntivi (passivi / a chiave nota) ===\n"
+            "        for _tt_mod, _tt_cls, _tt_lbl in (\n"
+            '            ("tetraear.ui.network_info_tab", "NetworkInfoTab", "\U0001f4f6 Network Info"),\n'
+            '            ("tetraear.ui.tetra_decrypt_tab", "DecryptTab", "\U0001f513 Decrypt (TELIVE-2)"),\n'
+            '            ("tetraear.ui.tetra_decoders_tab", "DecodersTab", "\U0001f4e1 Decoders"),\n'
+            '            ("tetraear.ui.tetra_antenna_tab", "AntennaTab", "\U0001f4fb Antenna/Freq"),\n'
+            '            ("tetraear.ui.tetra_reference_tab", "ReferenceTab", "\U0001f4da Reference"),\n'
+            "        ):\n"
+            "            try:\n"
+            "                import importlib as _tt_il\n"
+            "                _tt_widget = getattr(_tt_il.import_module(_tt_mod), _tt_cls)(self)\n"
+            "                tabs.addTab(_tt_widget, _tt_lbl)\n"
+            "            except Exception as _tt_e:\n"
+            "                import logging as _tt_log\n"
+            '                _tt_log.getLogger("tetraear").warning("Tab %s non caricato: %s", _tt_lbl, _tt_e)'
+        )
+        content = content.replace(anchor, injection, 1)
+        logger.info("[OK] 5 tab TETRA registrati in modern.py (init_ui).")
+    else:
         logger.warning(
             "[ATTENZIONE] Anchor del tab 'Statistics' non trovato in modern.py: "
-            "la struttura del sorgente a monte potrebbe essere cambiata. Non "
-            "aggiungo i tab (i moduli sono comunque copiati)."
+            "non aggiungo i tab (i moduli sono comunque copiati)."
         )
-        return
-    injection = (
-        anchor + "\n"
-        "        # === TetraEar Toolkit: tab aggiuntivi (passivi / a chiave nota) ===\n"
-        "        for _tt_mod, _tt_cls, _tt_lbl in (\n"
-        '            ("tetraear.ui.network_info_tab", "NetworkInfoTab", "\U0001f4f6 Network Info"),\n'
-        '            ("tetraear.ui.tetra_decrypt_tab", "DecryptTab", "\U0001f513 Decrypt (TELIVE-2)"),\n'
-        '            ("tetraear.ui.tetra_decoders_tab", "DecodersTab", "\U0001f4e1 Decoders"),\n'
-        '            ("tetraear.ui.tetra_reference_tab", "ReferenceTab", "\U0001f4da Reference"),\n'
-        "        ):\n"
-        "            try:\n"
-        "                import importlib as _tt_il\n"
-        "                _tt_widget = getattr(_tt_il.import_module(_tt_mod), _tt_cls)(self)\n"
-        "                tabs.addTab(_tt_widget, _tt_lbl)\n"
-        "            except Exception as _tt_e:\n"
-        "                import logging as _tt_log\n"
-        '                _tt_log.getLogger("tetraear").warning("Tab %s non caricato: %s", _tt_lbl, _tt_e)'
-    )
-    content = content.replace(anchor, injection, 1)
-    modern.write_text(content, encoding="utf-8")
-    logger.info("[OK] Tab TETRA (Network Info, Decrypt, Decoders, Reference) registrati in modern.py.")
+
+    # Etichetta di stato del toolkit nella barra Status in alto (best-effort).
+    status_anchor = "status_group.setLayout(status_layout)"
+    if "toolkit_status_label" in content:
+        logger.info("[OK] Etichetta di stato del toolkit gia' presente.")
+    elif status_anchor in content:
+        status_inject = (
+            'self.toolkit_status_label = QLabel("\U0001f9f0 Toolkit: pronto")\n'
+            '        self.toolkit_status_label.setStyleSheet("font-weight: bold; padding: 5px; color: #888888;")\n'
+            "        status_layout.addWidget(self.toolkit_status_label)\n"
+            "        " + status_anchor
+        )
+        content = content.replace(status_anchor, status_inject, 1)
+        logger.info("[OK] Etichetta di stato del toolkit aggiunta alla barra Status.")
+    else:
+        logger.info("[INFO] Gruppo Status non trovato: salto l'etichetta di stato (non essenziale).")
+
+    if content != original:
+        modern.write_text(content, encoding="utf-8")
+        logger.info("[OK] modern.py aggiornato con i tab TETRA.")
+    else:
+        logger.info("[OK] modern.py gia' aggiornato (nessuna modifica).")
 
 
 def patch_voice_hide_codec_window() -> None:

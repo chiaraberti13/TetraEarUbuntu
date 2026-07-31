@@ -162,3 +162,53 @@ def open_terminal(command: str, cwd=None) -> tuple[bool, str]:
             except OSError:
                 continue
     return False, "Nessun terminale grafico trovato. Esegui a mano:\n  " + command
+
+
+# ============================================================
+# INTEGRAZIONE CON LA FINESTRA PRINCIPALE (best-effort)
+# ============================================================
+
+def tune_main_window(main_window, freq_mhz) -> tuple[bool, str]:
+    """Sintonizza TetraEar sulla frequenza data (MHz), riusando i metodi della
+    finestra principale. Difensivo: se la struttura a monte cambia, ritorna un
+    messaggio senza sollevare eccezioni."""
+    if main_window is None:
+        return False, "GUI non disponibile."
+    try:
+        freq = float(freq_mhz)
+    except (TypeError, ValueError):
+        return False, f"Frequenza non valida: {freq_mhz}"
+    try:
+        fn = getattr(main_window, "on_tune_from_spectrum", None)
+        if callable(fn):
+            fn(freq)
+            return True, f"Sintonizzato a {freq:.3f} MHz."
+        freq_input = getattr(main_window, "freq_input", None)
+        if freq_input is not None:
+            freq_input.setText(f"{freq:.3f}")
+            tune = getattr(main_window, "on_tune", None)
+            if callable(tune):
+                tune()
+            return True, f"Sintonizzato a {freq:.3f} MHz."
+        return False, "Campo frequenza non trovato nella GUI."
+    except Exception as exc:  # difensivo
+        return False, f"Tune fallito: {exc}"
+
+
+def set_app_status(main_window, text: str) -> None:
+    """Mostra un messaggio di stato del toolkit nella finestra principale:
+    aggiorna l'etichetta 'toolkit_status_label' (se iniettata) e la status bar."""
+    if main_window is None:
+        return
+    try:
+        lbl = getattr(main_window, "toolkit_status_label", None)
+        if lbl is not None:
+            lbl.setText("🧰 " + text)
+    except Exception:
+        pass
+    try:
+        sb = main_window.statusBar()
+        if sb is not None:
+            sb.showMessage(text, 8000)
+    except Exception:
+        pass

@@ -24,7 +24,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QGroupBox, QMessageBox,
 )
 
-from tetraear.ui.tetra_gui_common import open_terminal, find_bin
+from tetraear.ui.tetra_gui_common import open_terminal, find_bin, set_app_status
 
 
 class DecodersTab(QWidget):
@@ -127,6 +127,7 @@ class DecodersTab(QWidget):
 
     def _run(self, command: str) -> None:
         ok, msg = open_terminal(command)
+        set_app_status(self.main_window, "Decoder: " + msg)
         if not ok:
             QMessageBox.information(self, "Avvio", msg)
 

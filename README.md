@@ -359,12 +359,16 @@ calculator** (the ANT-500 tip from the article). It reuses the same `KEY:VALUE` 
     decrypted-voice folder. Known-key only, no cracking.
   - **📡 Decoders** — launch multimon-ng (POCSAG), dump1090 (ADS-B + web map) and
     dsd-fme (DMR/P25) with the documented frequencies.
+  - **📻 Antenna/Freq** — antenna-length calculator + a TETRA band plan whose
+    presets **tune TetraEar** with one click.
   - **📚 Reference** — TETRA vs TETRA2, the TEA/TAA suites, the five TETRA:BURST
     CVEs and all the source links.
 
-  Already installed? Get the tabs by re-running `python3 install_linux.py --repair`
-  (Windows: re-run the installer). Each tab is wrapped in a `try/except`, so it
-  can never prevent the app from starting.
+  Toolkit actions (tuning, launching a chain/decoder) also show up in the app's
+  top **Status** panel (a "🧰 Toolkit" line). Already installed? Get the tabs by
+  re-running `python3 install_linux.py --repair` (Windows: re-run the installer).
+  Each tab is wrapped in a `try/except`, so it can never prevent the app from
+  starting.
 - **As the standalone tool** (`tetra_netscanner.py` / `avvia_netscanner.sh`),
   documented below — it is the shared engine the GUI tab reuses.
 
@@ -894,12 +898,16 @@ robusto.
     nessun cracking.
   - **📡 Decoders** — avvia multimon-ng (POCSAG), dump1090 (ADS-B + mappa web) e
     dsd-fme (DMR/P25) con le frequenze documentate.
+  - **📻 Antenna/Freq** — calcolatore della lunghezza d'antenna + un piano
+    frequenze TETRA i cui preset **sintonizzano TetraEar** con un clic.
   - **📚 Reference** — TETRA vs TETRA2, le suite TEA/TAA, le cinque CVE
     TETRA:BURST e tutti i link delle fonti.
 
-  Già installato? Ottieni i tab rilanciando `python3 install_linux.py --repair`
-  (su Windows rilancia l'installer). Ogni tab è avvolto in un `try/except`,
-  quindi non può mai impedire l'avvio dell'app.
+  Le azioni del toolkit (sintonia, avvio di una catena/decoder) compaiono anche
+  nel pannello **Status** in alto dell'app (una riga "🧰 Toolkit"). Già
+  installato? Ottieni i tab rilanciando `python3 install_linux.py --repair` (su
+  Windows rilancia l'installer). Ogni tab è avvolto in un `try/except`, quindi
+  non può mai impedire l'avvio dell'app.
 - **Come tool standalone** (`tetra_netscanner.py` / `avvia_netscanner.sh`),
   documentato qui sotto — è il motore condiviso che il tab della GUI riusa.
 
