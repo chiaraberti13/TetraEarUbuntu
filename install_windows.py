@@ -1565,6 +1565,16 @@ def parse_args() -> argparse.Namespace:
         "--no-telive2", action="store_true",
         help="Non installare automaticamente la catena TELIVE-2 (decifratura vocale a chiave nota, via WSL2)",
     )
+    parser.add_argument(
+        "--native", action="store_true",
+        help="Installa la versione NATIVA Windows (vecchio percorso). Per default "
+             "TetraEar viene installato e avviato dentro WSL, cosi' l'intera suite "
+             "(5 tab + TELIVE-2 + decoder) funziona come su Ubuntu.",
+    )
+    parser.add_argument(
+        "--freq", default="392.225",
+        help="Frequenza MHz predefinita per il launcher WSL (default 392.225).",
+    )
     return parser.parse_args()
 
 
@@ -1606,6 +1616,245 @@ def do_check() -> None:
     verify_installation()
 
 
+# ============================================================
+# PERCORSO PREDEFINITO: TUTTO DENTRO WSL (app + 5 tab + TELIVE-2 + decoder)
+# ============================================================
+#
+# Su Windows la suite completa (specialmente TELIVE-2 e alcuni decoder) e'
+# profondamente POSIX. Invece di costruire una GUI nativa che poi NON riesce a
+# vedere i tool installati in WSL, installiamo ed avviamo TetraEar INTERAMENTE
+# dentro WSL (Ubuntu): cosi' l'esperienza e' identica a quella Ubuntu e tutti i
+# tab funzionano. La finestra Qt appare via WSLg (Windows 11) o X server (Win10).
+
+WSL_HOME_DIR = "~/TetraEarUbuntu"  # cartella dell'installer dentro WSL
+
+
+def _wsl_exe():
+    return shutil.which("wsl") or shutil.which("wsl.exe")
+
+
+def _decode_wsl_output(raw: bytes) -> str:
+    """L'output di wsl.exe e' spesso UTF-16LE. Proviamo UTF-16, poi UTF-8."""
+    for enc in ("utf-16-le", "utf-16", "utf-8"):
+        try:
+            text = raw.decode(enc)
+            if "\x00" not in text:
+                return text
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="ignore")
+
+
+def wsl_available() -> bool:
+    wsl = _wsl_exe()
+    if not wsl:
+        return False
+    try:
+        return subprocess.run([wsl, "--status"], capture_output=True, timeout=30).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def wsl_distros() -> list:
+    wsl = _wsl_exe()
+    if not wsl:
+        return []
+    try:
+        result = subprocess.run([wsl, "-l", "-q"], capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if result.returncode != 0:
+        return []
+    return [l.strip() for l in _decode_wsl_output(result.stdout).splitlines() if l.strip()]
+
+
+def _to_wsl_path(win_path: Path):
+    wsl = _wsl_exe()
+    if not wsl:
+        return None
+    try:
+        result = subprocess.run([wsl, "wslpath", "-a", str(win_path)], capture_output=True, timeout=30)
+        if result.returncode == 0:
+            return _decode_wsl_output(result.stdout).strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def print_wsl_setup_guide() -> None:
+    step("Come abilitare WSL2 (una volta sola)")
+    logger.info(
+        "TetraEar su Windows gira dentro WSL2 (Ubuntu in Windows), cosi' l'intera\n"
+        "suite (5 tab + TELIVE-2 + decoder) funziona come su Ubuntu.\n\n"
+        "1) Apri PowerShell COME AMMINISTRATORE ed esegui:\n"
+        "       wsl --install -d Ubuntu\n"
+        "   poi RIAVVIA il PC quando richiesto.\n\n"
+        "2) Al primo avvio Ubuntu crea un utente e una password (servono per 'sudo').\n\n"
+        "3) Rifai doppio clic su install_windows.bat: rilevera' WSL e proseguira'.\n\n"
+        "GUI: su Windows 11 le finestre Linux appaiono da sole via WSLg. Su Windows 10\n"
+        "serve un server X (es. VcXsrv) con 'export DISPLAY=...'."
+    )
+
+
+def sync_repo_into_wsl() -> bool:
+    """Copia gli installer + assets + doc dalla cartella montata a ~/TetraEarUbuntu
+    dentro WSL (l'installazione vera avviene li', non su /mnt che e' lento)."""
+    wsl = _wsl_exe()
+    src = _to_wsl_path(INSTALLER_DIR)
+    if not (wsl and src):
+        logger.error("[ERRORE] Non riesco a convertire il percorso per WSL.")
+        return False
+    step("Copio gli installer dentro WSL (%s)" % WSL_HOME_DIR)
+    remote = (
+        f'set -e; SRC="{src}"; DST="{WSL_HOME_DIR}"; '
+        'mkdir -p "$DST"; '
+        'cp -f "$SRC"/*.py "$SRC"/*.sh "$SRC"/*.md "$DST"/ 2>/dev/null || true; '
+        'cp -rf "$SRC"/assets "$DST"/ 2>/dev/null || true; '
+        'chmod +x "$DST"/*.sh 2>/dev/null || true; '
+        'echo "[OK] Copiato in $DST"'
+    )
+    try:
+        rc = subprocess.run([wsl, "-e", "bash", "-lic", remote]).returncode
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.error("[ERRORE] Copia in WSL fallita: %s", exc)
+        return False
+    return rc == 0
+
+
+def run_full_stack_in_wsl(extra_args: list) -> int:
+    """Esegue install_linux.py DENTRO WSL: installa app + 5 tab + TELIVE-2 +
+    decoder in un colpo solo. stdio ereditato (prompt sudo interattivi)."""
+    wsl = _wsl_exe()
+    args_str = " ".join(f"'{a}'" for a in extra_args)
+    remote = f"cd {WSL_HOME_DIR} && python3 install_linux.py {args_str}".strip()
+    step("Installo l'intera suite TetraEar dentro WSL (puo' chiedere la password sudo)")
+    logger.info("Eseguo in WSL: %s", remote)
+    try:
+        return subprocess.run([wsl, "-e", "bash", "-lic", remote]).returncode
+    except (OSError, subprocess.SubprocessError) as exc:
+        logger.error("[ERRORE] Esecuzione in WSL fallita: %s", exc)
+        return 1
+
+
+def create_wsl_launcher(freq: str) -> None:
+    """Crea un launcher Windows (.vbs) che avvia TetraEar dentro WSL: la GUI
+    appare via WSLg. Copia anche sul Desktop."""
+    step("Creo il launcher Windows 'Avvia TetraEar (WSL).vbs'")
+    # Frequenza sicura: solo cifre e punto.
+    safe_freq = "".join(ch for ch in str(freq) if ch.isdigit() or ch == ".") or "392.225"
+    inner = f"cd {WSL_HOME_DIR} && ./avvia_tetraear.sh {safe_freq}"
+    vbs = (
+        '\' Avvia TetraEar dentro WSL (la GUI appare via WSLg).\r\n'
+        'Set WshShell = CreateObject("WScript.Shell")\r\n'
+        f'WshShell.Run "wsl.exe -e bash -lic ""{inner}""", 0, False\r\n'
+    )
+    launcher = INSTALLER_DIR / "Avvia TetraEar (WSL).vbs"
+    try:
+        launcher.write_text(vbs, encoding="utf-8")
+        logger.info("[OK] Launcher creato: %s", launcher)
+        try:
+            desktop = Path(os.path.expanduser("~")) / "Desktop"
+            if desktop.is_dir():
+                shutil.copy2(launcher, desktop / launcher.name)
+                logger.info("[OK] Copia sul Desktop: %s", desktop / launcher.name)
+        except OSError:
+            pass
+    except OSError as exc:
+        logger.warning("[ATTENZIONE] Non ho potuto creare il launcher (%s).", exc)
+
+
+def print_usbipd_guide() -> None:
+    step("Per usare la chiavetta RTL-SDR dentro WSL (usbipd-win)")
+    logger.info(
+        "WSL non vede l'USB da solo: la chiavetta va 'attaccata' a WSL una volta\n"
+        "per sessione con usbipd-win.\n\n"
+        "1) Installa usbipd-win (in PowerShell admin):\n"
+        "       winget install usbipd\n"
+        "2) Collega la chiavetta, poi elenca i device:\n"
+        "       usbipd list\n"
+        "3) Condividi e attacca a WSL il BUSID della RTL-SDR (es. 2-4):\n"
+        "       usbipd bind --busid 2-4\n"
+        "       usbipd attach --wsl --busid 2-4\n"
+        "4) Dentro WSL verifica con:  rtl_test -t\n\n"
+        "Le funzioni SENZA chiavetta (calcolo antenna, Reference, editor keyfile)\n"
+        "funzionano comunque senza questo passaggio."
+    )
+
+
+def do_check_wsl() -> None:
+    step("Modalita' --check (WSL): stato di WSL e dell'installazione dentro Ubuntu")
+    has_wsl = wsl_available()
+    distros = wsl_distros() if has_wsl else []
+    logger.info("  %s WSL2 disponibile", "[OK]   " if has_wsl else "[MANCA]")
+    logger.info("  %s Distro WSL: %s", "[OK]   " if distros else "[MANCA]",
+                ", ".join(distros) if distros else "(nessuna)")
+    if has_wsl and distros:
+        wsl = _wsl_exe()
+        try:
+            rc = subprocess.run(
+                [wsl, "-e", "bash", "-lic",
+                 f"test -d {WSL_HOME_DIR}/TetraEar/.venv && command -v telive >/dev/null 2>&1 "
+                 "|| test -x /tetra/bin/telive"],
+                capture_output=True, timeout=30).returncode
+            logger.info("  %s TetraEar + TELIVE-2 installati in WSL",
+                        "[OK]   " if rc == 0 else "[DA FARE]")
+        except (OSError, subprocess.SubprocessError):
+            logger.info("  [?] Impossibile interrogare WSL.")
+
+
+def install_via_wsl(args) -> int:
+    """Percorso PREDEFINITO: installa ed avvia l'intera suite dentro WSL."""
+    logger.info("Percorso WSL: TetraEar verra' installato e avviato dentro Ubuntu (WSL).")
+    if not wsl_available() or not wsl_distros():
+        logger.warning("[ATTENZIONE] WSL2/Ubuntu non disponibili.")
+        print_wsl_setup_guide()
+        return 1
+
+    if not sync_repo_into_wsl():
+        return 1
+
+    extra = []
+    if args.no_extra:
+        extra.append("--no-extra")
+    if args.no_telive2:
+        extra.append("--no-telive2")
+    if getattr(args, "ref", None):
+        extra += ["--ref", args.ref]
+    rc = run_full_stack_in_wsl(extra)
+
+    create_wsl_launcher(args.freq)
+    print_usbipd_guide()
+
+    step("Fatto")
+    if rc == 0:
+        logger.info("[OK] TetraEar e' installato in WSL con tutti i tab e i tool.")
+    else:
+        logger.warning("[ATTENZIONE] L'installazione in WSL ha restituito codice %s; "
+                       "controlla i messaggi sopra e i log in WSL (~/TetraEarUbuntu/logs).", rc)
+    logger.info("Avvio: doppio clic su 'Avvia TetraEar (WSL).vbs' (anche sul Desktop).")
+    logger.info("Oppure in WSL:  cd ~/TetraEarUbuntu && ./avvia_tetraear.sh %s", args.freq)
+    return 0 if rc == 0 else rc
+
+
+def install_native(args) -> int:
+    """Vecchio percorso: build NATIVA Windows (dietro --native)."""
+    install_system_dependencies()
+    ensure_tetraear_source(clone_if_missing=True)
+    unify_logs_dir()
+    patch_tetraear_source_bugs()
+    patch_voice_hide_codec_window()
+    patch_voice_codec_timeout()
+    patch_tetraear_add_toolkit()
+    create_virtualenv_and_install_requirements()
+    install_windows_rtlsdr_dll()
+    install_tetra_codec_with_fallback()
+    create_launchers()
+    verify_installation()
+    run_extra_decoders(args.no_extra)
+    run_telive2(args.no_telive2)
+    return 0
+
+
 def main() -> int:
     args = parse_args()
 
@@ -1618,7 +1867,12 @@ def main() -> int:
             return 0
 
         if args.check:
-            do_check()
+            # In modalita' WSL (predefinita) il --check riporta lo stato di WSL;
+            # con --native usa la verifica del build nativo.
+            if args.native:
+                do_check()
+            else:
+                do_check_wsl()
             return 0
 
         check_python_version()
@@ -1626,26 +1880,21 @@ def main() -> int:
         resolve_tetraear_ref(args.ref)
 
         if args.repair:
-            do_repair()
+            # Il repair riguarda il build nativo; in modalita' WSL si rilancia
+            # semplicemente l'installazione (idempotente) dentro WSL.
+            if args.native:
+                do_repair()
+            else:
+                install_via_wsl(args)
             return 0
 
-        install_system_dependencies()
-        ensure_tetraear_source(clone_if_missing=True)
-        unify_logs_dir()
-        patch_tetraear_source_bugs()
-        patch_voice_hide_codec_window()
-        patch_voice_codec_timeout()
-        patch_tetraear_add_toolkit()
-        create_virtualenv_and_install_requirements()
-        install_windows_rtlsdr_dll()
-        install_tetra_codec_with_fallback()
-        create_launchers()
-        verify_installation()
-        # TetraEar e' pronto: installo anche gli altri decoder in automatico.
-        run_extra_decoders(args.no_extra)
-        # ...e la catena TELIVE-2 (decifratura vocale a chiave nota, via WSL2).
-        run_telive2(args.no_telive2)
-        return 0
+        # PERCORSO PREDEFINITO: tutto dentro WSL (come Ubuntu). Il vecchio build
+        # nativo Windows resta disponibile con --native.
+        if args.native:
+            logger.info("Modalita' --native: build Windows nativa (i tab TELIVE-2/"
+                        "Decoders potrebbero non vedere i tool installati in WSL).")
+            return install_native(args)
+        return install_via_wsl(args)
 
     except InstallError:
         # Errore gia' stampato in modo chiaro da fail(): usciamo.

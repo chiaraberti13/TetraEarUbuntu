@@ -426,6 +426,23 @@ python tetra_netscanner.py --self-test             REM exercise the parser
 
 Tested on **Windows 10** and **Windows 11** (64-bit).
 
+> ✅ **By default, TetraEar now installs and runs inside WSL2** (Ubuntu on
+> Windows), exactly like the TELIVE-2 chain. This way the **whole suite — the
+> app, all five GUI tabs, TELIVE-2 and the extra decoders — runs in one Linux
+> environment and works just like on Ubuntu**; the Qt window appears via WSLg
+> (Windows 11) or an X server (Windows 10). `install_windows.bat` detects WSL,
+> runs `install_linux.py` inside it, and drops an **`Avvia TetraEar (WSL).vbs`**
+> launcher on your Desktop.
+>
+> - If WSL isn't set up yet, the installer prints the one-time steps
+>   (`wsl --install -d Ubuntu`, reboot) and you re-run it.
+> - To use the **RTL-SDR dongle inside WSL** you attach it once per session with
+>   **usbipd-win** (`winget install usbipd`, then `usbipd bind/attach --wsl`) —
+>   the installer prints the exact commands. No-hardware features (antenna,
+>   Reference, keyfile editor) work without it.
+> - Prefer the **old native Windows build**? Run `install_windows.bat --native`
+>   (note: in native mode the Decrypt/Decoders tabs may not see the WSL tools).
+
 **1. Get the installers**
 
 With **Git for Windows** the simplest way is to clone the repository
@@ -966,6 +983,25 @@ python tetra_netscanner.py --self-test             REM prova il parser
 ### 🪟 Windows
 
 Testato su **Windows 10** e **Windows 11** (64 bit).
+
+> ✅ **Per default TetraEar ora si installa e si avvia DENTRO WSL2** (Ubuntu in
+> Windows), esattamente come la catena TELIVE-2. Così **l'intera suite — l'app,
+> tutti e cinque i tab, TELIVE-2 e i decoder extra — gira in un unico ambiente
+> Linux e funziona come su Ubuntu**; la finestra Qt appare via WSLg (Windows 11)
+> o un server X (Windows 10). `install_windows.bat` rileva WSL, esegue dentro di
+> esso `install_linux.py` e crea un launcher **`Avvia TetraEar (WSL).vbs`** sul
+> Desktop.
+>
+> - Se WSL non è ancora configurato, l'installer stampa i passi una-tantum
+>   (`wsl --install -d Ubuntu`, riavvio) e lo rilanci.
+> - Per usare la **chiavetta RTL-SDR dentro WSL** la attacchi una volta per
+>   sessione con **usbipd-win** (`winget install usbipd`, poi
+>   `usbipd bind/attach --wsl`) — l'installer stampa i comandi esatti. Le
+>   funzioni senza hardware (antenna, Reference, editor keyfile) funzionano
+>   comunque.
+> - Preferisci la **vecchia build nativa Windows**? Esegui
+>   `install_windows.bat --native` (in modalità nativa i tab Decrypt/Decoders
+>   potrebbero non vedere i tool installati in WSL).
 
 **1. Scarica gli installer**
 

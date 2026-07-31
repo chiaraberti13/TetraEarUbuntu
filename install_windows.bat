@@ -8,6 +8,11 @@ REM  "Esegui come amministratore"). Si occupa di:
 REM    1) chiedere i permessi di amministratore se non li ha gia';
 REM    2) installare Python se manca (tramite winget);
 REM    3) avviare install_windows.py, che fa tutto il resto.
+REM
+REM  PER DEFAULT TetraEar viene installato e avviato DENTRO WSL (Ubuntu in
+REM  Windows), cosi' l'intera suite (5 tab + TELIVE-2 + decoder) funziona come
+REM  su Ubuntu; la GUI appare via WSLg. Serve WSL2 (l'installer guida se manca).
+REM  Per la vecchia build nativa:  install_windows.bat --native
 REM ============================================================
 
 title Installer TetraEar per Windows
