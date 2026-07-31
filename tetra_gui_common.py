@@ -18,7 +18,9 @@ messaggio, senza sollevare eccezioni che possano disturbare la GUI.
 
 from __future__ import annotations
 
+import math
 import os
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -26,6 +28,66 @@ from typing import Optional
 
 # Flowgraph GNU Radio incluso in telive-2 (stesso path usato da install_telive2.py).
 GRC_RELATIVE = "gnuradio-companion/python3_based_gnuradio/telive_1ch_simple_gr310_udp_xmlrpc.grc"
+
+# Limiti di sintonia tipici di una RTL-SDR (R820T/R828D). Fuori da qui non ha
+# senso lanciare rtl_fm; il controllo serve anche a rifiutare input non numerici.
+RTLSDR_MIN_MHZ = 24.0
+RTLSDR_MAX_MHZ = 1766.0
+
+
+# ============================================================
+# VALIDAZIONE INPUT (stdlib puro: testabile senza PyQt6)
+# ============================================================
+
+def validate_frequency_mhz(text) -> tuple[bool, Optional[float], str]:
+    """Valida una frequenza (MHz) da un campo utente. Accetta SOLO un numero
+    finito nell'intervallo RTL-SDR; qualsiasi altro carattere viene rifiutato
+    (niente da interpolare in un comando shell). Ritorna (ok, valore, messaggio)."""
+    raw = (str(text) if text is not None else "").strip().replace(",", ".")
+    if not raw:
+        return False, None, "Inserisci una frequenza in MHz."
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return False, None, "Frequenza non valida: inserisci solo un numero in MHz."
+    if not math.isfinite(val):
+        return False, None, "Frequenza non valida (valore non finito)."
+    if not (RTLSDR_MIN_MHZ <= val <= RTLSDR_MAX_MHZ):
+        return False, None, (
+            f"Fuori dai limiti RTL-SDR ({RTLSDR_MIN_MHZ:g}–{RTLSDR_MAX_MHZ:g} MHz)."
+        )
+    return True, val, ""
+
+
+def validate_keyfile_text(text: str) -> tuple[bool, str]:
+    """Validazione minima di un keyfile TELIVE-2: ogni riga non vuota e non
+    commentata deve iniziare con 'network' (con mcc/mnc) o 'key' (con un campo
+    'key <hex>'). Ritorna (ok, messaggio). Non giudica la correttezza della
+    chiave, solo la forma."""
+    errors = []
+    for i, line in enumerate(text.splitlines(), 1):
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        toks = s.split()
+        kind = toks[0].lower()
+        if kind == "network":
+            if "mcc" not in toks or "mnc" not in toks:
+                errors.append(f"riga {i}: 'network' senza mcc/mnc")
+        elif kind == "key":
+            rest = toks[1:]
+            if "key" not in rest or rest.index("key") == len(rest) - 1:
+                errors.append(f"riga {i}: 'key' senza campo 'key <hex>'")
+        else:
+            errors.append(f"riga {i}: atteso 'network' o 'key', trovato '{toks[0]}'")
+    if errors:
+        return False, "; ".join(errors[:6]) + (" …" if len(errors) > 6 else "")
+    return True, "OK"
+
+
+def shell_quote(value) -> str:
+    """Quoting robusto per inserire un valore in un comando shell."""
+    return shlex.quote(str(value))
 
 
 # ============================================================
@@ -150,7 +212,7 @@ def open_terminal(command: str, cwd=None) -> tuple[bool, str]:
         ["x-terminal-emulator", "-e", "bash", "-lc", keep],
         ["gnome-terminal", "--", "bash", "-lc", keep],
         ["konsole", "-e", "bash", "-lc", keep],
-        ["xfce4-terminal", "-e", f"bash -lc '{keep}'"],
+        ["xfce4-terminal", "-x", "bash", "-lc", keep],
         ["mate-terminal", "--", "bash", "-lc", keep],
         ["xterm", "-e", "bash", "-lc", keep],
     ]

@@ -459,8 +459,11 @@ def source_from_file(path: str, follow: bool = False) -> Iterator[str]:
                 time.sleep(0.2)
 
 
-def source_from_udp(port: int, host: str = "0.0.0.0") -> Iterator[str]:
-    """Riceve datagrammi UDP (i messaggi TETMON) e li restituisce come righe."""
+def source_from_udp(port: int, host: str = "127.0.0.1") -> Iterator[str]:
+    """Riceve datagrammi UDP (i messaggi TETMON) e li restituisce come righe.
+    Bind di default su 127.0.0.1: il ricevitore invia a telive in locale, quindi
+    non serve esporsi su tutte le interfacce (passa host='0.0.0.0' se davvero
+    ricevi da un'altra macchina)."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind((host, port))

@@ -24,7 +24,9 @@ from PyQt6.QtWidgets import (
     QLineEdit, QGroupBox, QMessageBox,
 )
 
-from tetraear.ui.tetra_gui_common import open_terminal, find_bin, set_app_status
+from tetraear.ui.tetra_gui_common import (
+    open_terminal, find_bin, set_app_status, validate_frequency_mhz,
+)
 
 
 class DecodersTab(QWidget):
@@ -122,8 +124,15 @@ class DecodersTab(QWidget):
             if missing else "Decoder pronti."
         )
 
-    def _freq(self, edit: QLineEdit) -> str:
-        return (edit.text().strip() or "0").replace(",", ".")
+    def _valid_freq(self, edit: QLineEdit):
+        """Ritorna la frequenza validata (float) o None (con avviso a schermo).
+        Solo numeri finiti nell'intervallo RTL-SDR: niente testo utente puo'
+        finire nel comando shell."""
+        ok, val, msg = validate_frequency_mhz(edit.text())
+        if not ok:
+            QMessageBox.warning(self, "Frequenza non valida", msg)
+            return None
+        return val
 
     def _run(self, command: str) -> None:
         ok, msg = open_terminal(command)
@@ -132,9 +141,11 @@ class DecodersTab(QWidget):
             QMessageBox.information(self, "Avvio", msg)
 
     def launch_pager(self) -> None:
-        f = self._freq(self.pager_freq)
+        f = self._valid_freq(self.pager_freq)
+        if f is None:
+            return
         self._run(
-            f"rtl_fm -f {f}M -s 22050 -g 42 - | "
+            f"rtl_fm -f {f:g}M -s 22050 -g 42 - | "
             "multimon-ng -t raw -a POCSAG1200 -f alpha /dev/stdin"
         )
 
@@ -142,5 +153,7 @@ class DecodersTab(QWidget):
         self._run("dump1090 --interactive --net")
 
     def launch_dmr(self) -> None:
-        f = self._freq(self.dmr_freq)
-        self._run(f"rtl_fm -f {f}M -s 48000 -g 42 - | dsd-fme -i - -o /dev/null")
+        f = self._valid_freq(self.dmr_freq)
+        if f is None:
+            return
+        self._run(f"rtl_fm -f {f:g}M -s 48000 -g 42 - | dsd-fme -i - -o /dev/null")

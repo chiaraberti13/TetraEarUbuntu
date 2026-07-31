@@ -29,7 +29,7 @@ from PyQt6.QtWidgets import (
 from tetraear.ui.tetra_gui_common import (
     open_terminal, receiver_launcher, gnuradio_launcher, grc_file,
     telive_dir, keyfile_default, voice_out_dir, find_bin, repo_root,
-    set_app_status,
+    set_app_status, shell_quote, validate_keyfile_text,
 )
 
 _KEYFILE_TEMPLATE = (
@@ -170,9 +170,20 @@ class DecryptTab(QWidget):
 
     def save_keyfile(self) -> None:
         p = self._keyfile_path()
+        text = self.keyfile_edit.toPlainText()
+        ok, msg = validate_keyfile_text(text)
+        if not ok:
+            reply = QMessageBox.question(
+                self, "Keyfile — possibili problemi",
+                f"Il keyfile sembra malformato:\n{msg}\n\nSalvare comunque?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
         try:
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(self.keyfile_edit.toPlainText(), encoding="utf-8")
+            p.write_text(text, encoding="utf-8")
             QMessageBox.information(self, "Keyfile", f"Salvato in {p}")
         except OSError as exc:
             QMessageBox.warning(self, "Keyfile", f"Non ho potuto salvare {p}: {exc}")
@@ -187,11 +198,11 @@ class DecryptTab(QWidget):
     def launch_gnuradio(self) -> None:
         launcher = gnuradio_launcher()
         if launcher:
-            self._run(f'"{launcher}"', cwd=launcher.parent)
+            self._run(shell_quote(launcher), cwd=launcher.parent)
             return
         grc = grc_file()
         if grc:
-            self._run(f'gnuradio-companion "{grc}"', cwd=grc.parent)
+            self._run(f"gnuradio-companion {shell_quote(grc)}", cwd=grc.parent)
         else:
             QMessageBox.information(
                 self, "GNU Radio",
@@ -207,10 +218,20 @@ class DecryptTab(QWidget):
             )
             return
         if launcher.name in ("run_receiver.sh", "receiver1udp"):
-            self._run(f'"{launcher}" 1', cwd=launcher.parent)
+            self._run(f"{shell_quote(launcher)} 1", cwd=launcher.parent)
         else:  # tetra-rx diretto con keyfile
             kf = self._keyfile_path()
-            self._run(f'"{launcher}" -r -k "{kf}" -s /dev/stdin', cwd=launcher.parent)
+            if not kf.is_file():
+                QMessageBox.warning(
+                    self, "Keyfile",
+                    f"Il keyfile non esiste o non e' un file regolare:\n{kf}\n"
+                    "Salvalo prima con il pulsante 'Salva'.",
+                )
+                return
+            self._run(
+                f"{shell_quote(launcher)} -r -k {shell_quote(kf)} -s /dev/stdin",
+                cwd=launcher.parent,
+            )
 
     def launch_telive(self) -> None:
         td = telive_dir()
@@ -218,7 +239,7 @@ class DecryptTab(QWidget):
         if td and (td / "telive").is_file():
             self._run("./telive", cwd=td)
         elif telive:
-            self._run(f'"{telive}"', cwd=telive.parent)
+            self._run(shell_quote(telive), cwd=telive.parent)
         else:
             QMessageBox.information(
                 self, "telive",
