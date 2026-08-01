@@ -1087,6 +1087,38 @@ def _to_msys_path(bash_exe: Path, win_path: Path) -> str:
     return result.stdout.strip()
 
 
+def _lowercase_dirnames(root: Path) -> None:
+    """Rinomina in minuscolo i nomi delle CARTELLE del codec ETSI (C-CODE ->
+    c-code, AMR-CODE -> amr-code). Le patch osmo referenziano percorsi minuscoli:
+    senza questa normalizzazione, su filesystem case-sensitive 'patch' salta
+    fix_64bit.patch e il cdecoder va in segfault (return -11). Difensivo e
+    idempotente."""
+    dirs = sorted(
+        (p for p in root.rglob("*") if p.is_dir()),
+        key=lambda p: len(p.parts), reverse=True,
+    )
+    for path in dirs:
+        lower = path.name.lower()
+        if lower == path.name:
+            continue
+        target = path.parent / lower
+        try:
+            same = target.exists() and target.samefile(path)
+        except OSError:
+            same = False
+        try:
+            if same:
+                tmp = path.parent / (path.name + ".tetra-tmpdir")
+                path.rename(tmp)
+                tmp.rename(target)
+            elif target.exists():
+                continue
+            else:
+                path.rename(target)
+        except OSError as exc:
+            logger.debug("Non ho potuto rinominare %s -> %s (%s)", path, target, exc)
+
+
 def _apply_osmo_tetra_patches(bash_exe: Path, codec_dir: Path, work_dir: Path) -> bool:
     git_exe = which_git()
     if git_exe is None:
@@ -1183,14 +1215,16 @@ def install_tetra_codec(fallback_only: bool = False) -> None:
         with zipfile.ZipFile(zip_path, "r") as archive:
             archive.extractall(work_dir)
 
+        # Uniformo CARTELLE e file del codec in minuscolo PRIMA di cercare
+        # c-code e di applicare le patch: senza la minuscola sulle cartelle la
+        # patch fix_64bit viene saltata e il cdecoder va in segfault.
+        logger.info("Uniformo cartelle e file del codec in minuscolo...")
+        _lowercase_dirnames(work_dir)
+        _lowercase_filenames(work_dir)
+
         c_code_dir = find_path_ci(work_dir, "c-code")
         if c_code_dir is None:
             fail("Cartella 'c-code' non trovata nell'archivio ETSI estratto (formato inatteso).")
-
-        # L'archivio ETSI usa nomi MAIUSCOLI ma il Makefile li richiama in
-        # minuscolo: uniformiamo prima di compilare.
-        logger.info("Uniformo i nomi dei file del codec in minuscolo...")
-        _lowercase_filenames(c_code_dir)
 
         # Normalizziamo CRLF -> LF, altrimenti le patch osmocom falliscono.
         _normalize_line_endings(work_dir)

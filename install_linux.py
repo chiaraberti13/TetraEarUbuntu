@@ -904,6 +904,47 @@ def _lowercase_filenames(directory: Path) -> None:
             path.rename(target)
 
 
+def _lowercase_dirnames(root: Path) -> None:
+    """Rinomina in minuscolo i nomi delle CARTELLE del codec ETSI.
+
+    L'archivio ETSI estrae cartelle in MAIUSCOLO (es. C-CODE/, AMR-CODE/), ma le
+    patch ufficiali osmo-tetra referenziano percorsi minuscoli (c-code/source.h,
+    amr-code/source.h). Su filesystem case-sensitive (Linux) 'patch' non trova i
+    file e SALTA tutte le patch -- inclusa fix_64bit.patch -- producendo un
+    cdecoder NON corretto per 64 bit che va in segmentation fault (return -11)
+    ad ogni frame vocale: la voce non si decodifica mai.
+
+    Rinominando le cartelle in minuscolo PRIMA di applicare le patch, i percorsi
+    combaciano e le patch vengono applicate. Difensivo: gestisce anche i
+    filesystem case-insensitive (rinomina in due passi) e non sovrascrive una
+    cartella minuscola gia' esistente.
+    """
+    dirs = sorted(
+        (p for p in root.rglob("*") if p.is_dir()),
+        key=lambda p: len(p.parts), reverse=True,   # dal piu' profondo
+    )
+    for path in dirs:
+        lower = path.name.lower()
+        if lower == path.name:
+            continue
+        target = path.parent / lower
+        try:
+            same = target.exists() and target.samefile(path)
+        except OSError:
+            same = False
+        try:
+            if same:  # FS case-insensitive: rinomina in due passi
+                tmp = path.parent / (path.name + ".tetra-tmpdir")
+                path.rename(tmp)
+                tmp.rename(target)
+            elif target.exists():
+                continue  # esiste gia' una versione minuscola: non tocco nulla
+            else:
+                path.rename(target)
+        except OSError as exc:
+            logger.debug("Non ho potuto rinominare %s -> %s (%s)", path, target, exc)
+
+
 def _normalize_line_endings(root: Path) -> None:
     """L'archivio ETSI ha alcuni file con fine riga Windows (CRLF); li
     normalizziamo a LF per evitare problemi con patch/make su Linux."""
@@ -1008,14 +1049,17 @@ def install_tetra_codec(fallback_only: bool = False) -> None:
         with zipfile.ZipFile(zip_path, "r") as archive:
             archive.extractall(work_dir)
 
+        # L'archivio ETSI usa nomi MAIUSCOLI (cartelle E file); le patch osmo e
+        # il Makefile referenziano percorsi minuscoli. Uniformiamo PRIMA di
+        # cercare c-code e di applicare le patch: senza la minuscola sulle
+        # CARTELLE la patch fix_64bit viene saltata e il cdecoder va in segfault.
+        logger.info("Uniformo cartelle e file del codec in minuscolo...")
+        _lowercase_dirnames(work_dir)
+        _lowercase_filenames(work_dir)
+
         c_code_dir = find_path_ci(work_dir, "c-code")
         if c_code_dir is None:
             fail("Cartella 'c-code' non trovata nell'archivio ETSI estratto (formato inatteso).")
-
-        # L'archivio ETSI usa nomi MAIUSCOLI ma il Makefile richiama i
-        # sorgenti in minuscolo: su Linux va uniformato prima di compilare.
-        logger.info("Uniformo i nomi dei file del codec in minuscolo...")
-        _lowercase_filenames(c_code_dir)
 
         _normalize_line_endings(work_dir)
 
