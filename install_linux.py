@@ -1868,6 +1868,51 @@ def check_rtl_sdr_dongle() -> None:
 # --repair e --uninstall
 # ============================================================
 
+def sync_working_codec_from_telive2() -> None:
+    """Copia in TetraEar il codec vocale gia' PATCHATO e FUNZIONANTE compilato
+    dalla catena TELIVE-2.
+
+    La build del codec di TELIVE-2 (osmo download_and_patch.sh) applica
+    correttamente le patch ETSI -- inclusa fix_64bit -- quindi il suo
+    cdecoder/sdecoder NON va in segfault. Se disponibile, lo usiamo come sorgente
+    autorevole per TetraEar: questo elimina il segfault -11 del cdecoder anche
+    nei casi in cui la build interna del codec fosse difettosa. Best-effort: se
+    il codec TELIVE-2 non e' presente, non fa nulla (resta la build interna)."""
+    home = Path(os.path.expanduser("~"))
+    candidate_dirs = [
+        INSTALLER_DIR / "telive2" / "osmo-tetra-sq5bpf-2" / "codec" / "c-code",
+        home / "telive2" / "osmo-tetra-sq5bpf-2" / "codec" / "c-code",
+        Path("/tetra") / "bin",
+    ]
+    src_dir = next((d for d in candidate_dirs if (d / "cdecoder").is_file()), None)
+    if src_dir is None:
+        logger.info("[INFO] Codec TELIVE-2 non presente: mantengo la build interna del codec.")
+        return
+    if not CODEC_BIN_DIR.exists():
+        logger.info("[INFO] Cartella bin del codec di TetraEar assente: salto la sincronizzazione.")
+        return
+
+    step("Uso il codec vocale gia' funzionante compilato da TELIVE-2")
+    copied = []
+    for name in ("cdecoder", "sdecoder", "ccoder", "scoder"):
+        src = src_dir / name
+        if not src.is_file():
+            continue
+        try:
+            dst = CODEC_BIN_DIR / name
+            shutil.copy2(src, dst)
+            dst.chmod(dst.stat().st_mode | 0o111)
+            copied.append(name)
+        except OSError as exc:
+            logger.warning("[ATTENZIONE] Copia di %s fallita (%s).", name, exc)
+    if copied:
+        logger.info("[OK] Codec TELIVE-2 copiato in TetraEar (%s)", ", ".join(copied))
+        logger.info("     Sorgente: %s", src_dir)
+        logger.info("     (risolve il segfault -11 del cdecoder: TELIVE-2 applica le patch ETSI)")
+    else:
+        logger.info("[INFO] Nessun binario del codec TELIVE-2 copiato.")
+
+
 def do_repair() -> None:
     step("Modalita' --repair: ricompilo il codec vocale e sistemo la compatibilita' pyrtlsdr")
     ensure_tetraear_source(clone_if_missing=True)
@@ -1878,6 +1923,9 @@ def do_repair() -> None:
     patch_tetraear_add_toolkit()
     patch_pyrtlsdr_dithering()
     install_tetra_codec_with_fallback()
+    # Se la catena TELIVE-2 e' gia' presente da un'installazione precedente, usa
+    # il suo codec (correttamente patchato) al posto di quello interno.
+    sync_working_codec_from_telive2()
     create_launchers()
     verify_installation()
 
@@ -2074,6 +2122,9 @@ def main() -> int:
         run_extra_decoders(args.no_extra)
         # ...e la catena TELIVE-2 (decifratura vocale a chiave nota).
         run_telive2(args.no_telive2)
+        # TELIVE-2 ha appena compilato un codec ETSI correttamente patchato:
+        # usalo in TetraEar per evitare il segfault -11 del cdecoder interno.
+        sync_working_codec_from_telive2()
         return 0
 
     except InstallError:
