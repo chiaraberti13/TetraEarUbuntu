@@ -262,6 +262,17 @@ def _to_int(value: str) -> Optional[int]:
         return None
 
 
+def _to_hex_int(value: str) -> Optional[int]:
+    """Interpreta un valore ESADECIMALE senza prefisso 0x. Il ricevitore
+    osmo-tetra-sq5bpf-2 stampa MCC/MNC/CCODE/ENC con printf %x (vedi
+    tetra_lower_mac.c: 'CCODE:%2.2x MCC:%4.4x MNC:%4.4x'), quindi p.es. l'MCC
+    italiano 222 arriva come '00de' (0xDE). Difensivo: None su errore."""
+    try:
+        return int(str(value), 16)
+    except (ValueError, TypeError):
+        return None
+
+
 class NetInfoParser:
     """Aggiorna un NetworkInfo a partire dalle righe del ricevitore."""
 
@@ -293,14 +304,19 @@ class NetInfoParser:
         info.total_messages += 1
         info.last_update = time.time()
 
+        # MCC/MNC/CCODE sono ESADECIMALI nel formato del ricevitore (%x).
         if "MCC" in tokens:
-            info.mcc = _to_int(tokens["MCC"]) or info.mcc
+            mcc = _to_hex_int(tokens["MCC"])
+            if mcc is not None:
+                info.mcc = mcc
         if "MNC" in tokens:
-            info.mnc = _to_int(tokens["MNC"]) if _to_int(tokens["MNC"]) is not None else info.mnc
-        if "LA" in tokens:
+            mnc = _to_hex_int(tokens["MNC"])
+            if mnc is not None:
+                info.mnc = mnc
+        if "LA" in tokens:  # LA e' decimale (%u)
             info.location_area = _to_int(tokens["LA"])
         if "CCODE" in tokens:
-            info.colour_code = _to_int(tokens["CCODE"])
+            info.colour_code = _to_hex_int(tokens["CCODE"])
         if "DLF" in tokens:
             dl = _to_int(tokens["DLF"])
             if dl:
@@ -335,8 +351,8 @@ class NetInfoParser:
                 info.encrypted_events += 1
             else:
                 info.clear_events += 1
-        if "ENC" in tokens:
-            enc = _to_int(tokens["ENC"])
+        if "ENC" in tokens:  # ENC e' esadecimale (%2.2x)
+            enc = _to_hex_int(tokens["ENC"])
             if enc is not None:
                 info.encryption_type = enc
                 if enc > 0:
@@ -649,14 +665,18 @@ def run_tui_loop(source: Iterator[str], freq_mhz: Optional[float]) -> None:
 # SELF-TEST (senza hardware)
 # ============================================================
 
-# Righe di esempio nel formato reale emesso dal ricevitore osmo-tetra-sq5bpf-2
-# (i FUNC sono illustrativi: il parser e' agnostico al FUNC ed estrae i token).
+# Righe di esempio nel formato REALE emesso dal ricevitore osmo-tetra-sq5bpf-2
+# (confermato dal sorgente, tetra_lower_mac.c):
+#   TETMON_begin FUNC:NETINFO1 CCODE:%2.2x MCC:%4.4x MNC:%4.4x DLF:%i ULF:%i LA:%u CRYPT:%i ...
+# CCODE/MCC/MNC (ed ENC) sono ESADECIMALI; LA/DLF/ULF/CRYPT decimali. Qui MCC
+# 00de = 0xDE = 222 (Italia), CCODE 0c = 12. Il parser e' agnostico al FUNC.
 _FIXTURE_LINES = [
-    "TETMON_begin FUNC:NETINFO MCC:222 MNC:1 LA:1234 CCODE:12 DLF:392225000 ULF:382225000 AUTH:1 RX:1 TETMON_end",
+    "TETMON_begin FUNC:NETINFO1 CCODE:0c MCC:00de MNC:0001 DLF:392225000 ULF:382225000 LA:1234 CRYPT:1 RX:1 TETMON_end",
     "BNCH SYSINFO (DL 392225000 Hz, UL 382225000 Hz), service_details 0x1234",
     "TETMON_begin FUNC:ENCINFO1 CRYPT:1 ENC:03 RX:1 TETMON_end",
-    "TETMON_begin FUNC:CALL SSI:00012345 IDX:001 IDT:0 ENCR:1 RX:1 TETMON_end",
+    "TETMON_begin FUNC:CMCE SSI:00012345 IDX:001 IDT:0 ENCR:1 RX:1 TETMON_end",
     "some unrelated debug line that must be ignored",
+    "authentication required on cell",
     "security_class: 3",
 ]
 
