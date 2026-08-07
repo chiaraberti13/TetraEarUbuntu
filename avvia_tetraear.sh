@@ -57,6 +57,22 @@ echo "============================================================"
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
+# ---------------------------------------------------------------------------
+# Ottimizzazioni prestazioni (riducono il rallentamento quando c'e' segnale)
+# ---------------------------------------------------------------------------
+# 1) File temporanei del codec in RAM: cdecoder scrive/legge 2 file per ogni
+#    frame vocale (~20/s); su tmpfs (/dev/shm) e' molto piu' veloce e non usura
+#    il disco. Ricade sul default se /dev/shm non e' scrivibile.
+if [ -d /dev/shm ] && [ -w /dev/shm ]; then export TMPDIR="/dev/shm"; fi
+# 2) Evita che numpy/BLAS aprano un thread per core saturando la CPU e
+#    sottraendo tempo alla GUI (l'FFT dello spettro e' piccola). Sovrascrivibile.
+export OMP_NUM_THREADS="${OMP_NUM_THREADS:-2}"
+export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-2}"
+export MKL_NUM_THREADS="${MKL_NUM_THREADS:-2}"
+export NUMEXPR_NUM_THREADS="${NUMEXPR_NUM_THREADS:-2}"
+# 3) Niente scrittura dei .pyc a runtime.
+export PYTHONDONTWRITEBYTECODE=1
+
 # Di default NIENTE -v: il logging DEBUG e' enorme (ogni frame + ogni chiamata
 # al codec) e rallenta la GUI quando c'e' segnale. Per il debug dettagliato usa
 # './avvia_tetraear.sh <freq> --debug' oppure TETRAEAR_DEBUG=1.
