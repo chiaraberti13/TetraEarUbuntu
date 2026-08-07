@@ -256,6 +256,34 @@ sections below. On Windows use `install_extra_decoders_windows.py`.
 
 ---
 
+### 🚀 One-command reception — osmo-tetra-sq5bpf **v1**, auto-launch (Ubuntu)
+
+If you just want the **original SQ5BPF v1 chain that works out of the box**
+(`osmo-tetra-sq5bpf` + the ETSI codec + `telive`) and you don't want to open
+and wire three terminals by hand, use the dedicated installer. It builds the
+v1 receiver, the ETSI voice codec (patched with the official osmocom 64-bit
+fix so `cdecoder` doesn't segfault) and `telive`, sets up `/tetra`, and drops
+an **auto-launcher**:
+
+```bash
+python3 install_osmo.py            # build the whole v1 chain (Ubuntu/Debian)
+python3 install_osmo.py --check    # just report what's present
+python3 install_osmo.py --no-gnuradio   # skip GNU Radio (already installed)
+```
+
+Then start **everything with a single command** — it opens the three
+terminals for you, in the right order, with the right delays:
+
+```bash
+./avvia_osmo.sh 392.225      # 1) GNU Radio  2) receiver1udp  3) telive
+```
+
+`avvia_osmo.sh` is self-locating (it finds the `.grc` flowgraph, `receiver1udp`
+and the `telive` binary wherever `osmo_v1/` was unpacked) and auto-detects your
+terminal emulator (gnome-terminal / konsole / xfce4-terminal / xterm …). In
+GNU Radio just set your TETRA frequency and press **Run**; decoded voice `.out`
+files land in `/tetra/out` (`tplay /tetra/out/<file>.out`). Ubuntu only for now.
+
 ### 🔓 Known-key voice decryption — TELIVE-2 (Linux & Windows via WSL)
 
 TetraEar decodes **clear** TETRA voice. If you already *own* the encryption
@@ -805,6 +833,34 @@ rtl_fm -f 446.09375M -s 48000 -g 42 - | dsd-fme -i - -o /dev/null
 sezioni seguenti. Su Windows usa `install_extra_decoders_windows.py`.
 
 ---
+
+### 🚀 Ricezione con un solo comando — osmo-tetra-sq5bpf **v1**, avvio automatico (Ubuntu)
+
+Se vuoi semplicemente la **catena originale SQ5BPF v1 che funziona subito**
+(`osmo-tetra-sq5bpf` + codec ETSI + `telive`) senza aprire e configurare tre
+terminali a mano, usa l'installer dedicato. Compila il ricevitore v1, il codec
+vocale ETSI (con la fix a 64 bit ufficiale osmocom, così `cdecoder` non va in
+segfault) e `telive`, prepara `/tetra` e installa un **avvio automatico**:
+
+```bash
+python3 install_osmo.py            # compila tutta la catena v1 (Ubuntu/Debian)
+python3 install_osmo.py --check    # controlla soltanto cosa è presente
+python3 install_osmo.py --no-gnuradio   # salta GNU Radio (se ce l'hai già)
+```
+
+Poi avvii **tutto con un solo comando** — apre da solo i tre terminali, in
+ordine e con le pause giuste:
+
+```bash
+./avvia_osmo.sh 392.225      # 1) GNU Radio  2) receiver1udp  3) telive
+```
+
+`avvia_osmo.sh` si auto-localizza (trova da solo il flowgraph `.grc`,
+`receiver1udp` e il binario `telive` ovunque sia stata scompattata `osmo_v1/`)
+e rileva automaticamente l'emulatore di terminale (gnome-terminal / konsole /
+xfce4-terminal / xterm …). In GNU Radio imposta la frequenza del tuo TETRA e
+premi **Run**; i file vocali `.out` decodificati finiscono in `/tetra/out`
+(`tplay /tetra/out/<file>.out`). Per ora solo Ubuntu.
 
 ### 🔓 Decifratura vocale a chiave nota — TELIVE-2 (Linux e Windows via WSL)
 
