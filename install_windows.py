@@ -961,6 +961,42 @@ def patch_tetraear_add_toolkit() -> None:
         logger.info("[OK] modern.py gia' aggiornato (nessuna modifica).")
 
 
+def patch_tetraear_relax_validator() -> None:
+    """Ammorbidisce l'uovo-gallina del validatore (core/validator.py): riduce da
+    x0.4 a x0.85 la penalita' per il 'no network ID', cosi' un frame ben formato
+    con CRC ok passa anche senza rete confermata, mentre i frame con CRC fallito
+    restano scartati (x0.3). Evita tabella vuota e stato bloccato su segnale
+    reale. Idempotente e tollerante."""
+    step("Rendo il validatore dei frame meno severo (stato/tabella su segnale reale)")
+    target = TETRAEAR_ROOT / "tetraear" / "core" / "validator.py"
+    if not target.is_file():
+        logger.info("[INFO] %s non trovato, salto la patch del validatore.", target)
+        return
+    content = target.read_text(encoding="utf-8")
+    if "TetraEar toolkit: penalita' piu' morbida" in content:
+        logger.info("[OK] Validatore gia' ammorbidito.")
+        return
+    anchor = (
+        '                confidence *= 0.4\n'
+        '                issues.append("No network ID and no valid network seen yet")'
+    )
+    if anchor not in content:
+        logger.warning("[ATTENZIONE] Punto del validatore non trovato: salto la patch.")
+        return
+    replacement = (
+        "                # TetraEar toolkit: penalita' piu' morbida per il "
+        '"no network ID".\n'
+        "                # Un frame ben formato con CRC ok passa anche senza rete "
+        "confermata;\n"
+        "                # i frame con CRC fallito restano scartati (x0.3).\n"
+        '                confidence *= 0.85\n'
+        '                issues.append("No network ID and no valid network seen yet")'
+    )
+    content = content.replace(anchor, replacement, 1)
+    target.write_text(content, encoding="utf-8")
+    logger.info("[OK] Validatore ammorbidito (core/validator.py).")
+
+
 # ============================================================
 # FASE 4 -- Compilazione del codec vocale ETSI TETRA (via MSYS2)
 # ============================================================
@@ -1484,6 +1520,7 @@ def do_repair() -> None:
     patch_voice_hide_codec_window()
     patch_voice_codec_timeout()
     patch_tetraear_add_toolkit()
+    patch_tetraear_relax_validator()
     patch_pyrtlsdr_dithering()
     ensure_msys2_toolchain()
     install_windows_rtlsdr_dll()
@@ -1879,6 +1916,7 @@ def install_native(args) -> int:
     patch_voice_hide_codec_window()
     patch_voice_codec_timeout()
     patch_tetraear_add_toolkit()
+    patch_tetraear_relax_validator()
     create_virtualenv_and_install_requirements()
     install_windows_rtlsdr_dll()
     install_tetra_codec_with_fallback()

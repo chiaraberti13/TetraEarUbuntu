@@ -1506,6 +1506,61 @@ def patch_tetraear_add_toolkit() -> None:
         logger.info("[OK] modern.py gia' aggiornato (nessuna modifica).")
 
 
+def patch_tetraear_relax_validator() -> None:
+    """
+    Ammorbidisce l'uovo-gallina del validatore dei frame (core/validator.py).
+
+    L'upstream penalizza pesantemente (x0.4) OGNI frame che non porta un MCC
+    finche' non e' stata "vista" una rete valida; ma l'MCC arriva solo dai rari
+    frame SYSINFO, e se il loro CRC fallisce la rete non viene mai registrata:
+    risultato, TUTTI i frame restano 'invalidi', la tabella Decoded Frames resta
+    vuota e lo stato non diventa mai verde (sintomo: "Signal Detected
+    (Decoding...)" fisso con contatore 0/N molto alto).
+
+    Riduciamo la penalita' a x0.85: un frame BEN FORMATO con CRC ok passa anche
+    senza rete confermata (0.85 >= soglia 0.5), mentre i frame con CRC FALLITO
+    restano comunque scartati (x0.3 -> 0.255 < 0.5): il rumore non viene mai
+    mostrato. Patch idempotente e tollerante (se l'anchor non c'e', logga e
+    salta).
+    """
+    step("Rendo il validatore dei frame meno severo (stato/tabella su segnale reale)")
+
+    target = TETRAEAR_ROOT / "tetraear" / "core" / "validator.py"
+    if not target.is_file():
+        logger.info("[INFO] %s non trovato, salto la patch del validatore.", target)
+        return
+
+    content = target.read_text(encoding="utf-8")
+    if "TetraEar toolkit: penalita' piu' morbida" in content:
+        logger.info("[OK] Validatore gia' ammorbidito.")
+        return
+
+    anchor = (
+        '                confidence *= 0.4\n'
+        '                issues.append("No network ID and no valid network seen yet")'
+    )
+    if anchor not in content:
+        logger.warning(
+            "[ATTENZIONE] Punto del validatore non trovato (struttura upstream "
+            "diversa): salto la patch, senza conseguenze."
+        )
+        return
+    replacement = (
+        "                # TetraEar toolkit: penalita' piu' morbida per il "
+        '"no network ID".\n'
+        "                # Evita l'uovo-gallina (nessun MCC finche' non passa un "
+        "SYSINFO):\n"
+        "                # un frame ben formato con CRC ok passa anche senza rete "
+        "confermata;\n"
+        "                # i frame con CRC fallito restano scartati (x0.3).\n"
+        '                confidence *= 0.85\n'
+        '                issues.append("No network ID and no valid network seen yet")'
+    )
+    content = content.replace(anchor, replacement, 1)
+    target.write_text(content, encoding="utf-8")
+    logger.info("[OK] Validatore ammorbidito (core/validator.py).")
+
+
 def patch_voice_hide_codec_window() -> None:
     """
     Evita che ad OGNI frame decodificato si apra una finestra nera del codec.
@@ -1933,6 +1988,7 @@ def do_repair() -> None:
     patch_voice_hide_codec_window()
     patch_voice_codec_timeout()
     patch_tetraear_add_toolkit()
+    patch_tetraear_relax_validator()
     patch_pyrtlsdr_dithering()
     install_tetra_codec_with_fallback()
     # Se la catena TELIVE-2 e' gia' presente da un'installazione precedente, usa
@@ -2122,6 +2178,7 @@ def main() -> int:
         patch_voice_hide_codec_window()
         patch_voice_codec_timeout()
         patch_tetraear_add_toolkit()
+        patch_tetraear_relax_validator()
         create_virtualenv_and_install_requirements()
         # La configurazione della chiavetta viene fatta PRIMA del codec:
         # il codec dipende da un download esterno (ETSI) che potrebbe
