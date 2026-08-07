@@ -1689,7 +1689,7 @@ def create_launchers() -> None:
         logger.info("[INFO] venv non pronto, salto la creazione dei launcher.")
         return
 
-    # Script di avvio dedicato: attiva il venv, avvia con --auto-start + -v e
+    # Script di avvio dedicato: attiva il venv, avvia con --auto-start e
     # redirige l'output di console in un file (con Terminal=false stdout/stderr
     # verrebbero altrimenti scartati). I log di decodifica (codec_*.log, ...)
     # li scrive comunque l'app dentro logs/, relativi a questa cartella.
@@ -1707,7 +1707,11 @@ def create_launchers() -> None:
         '# shellcheck disable=SC1091\n'
         'source .venv/bin/activate\n'
         'FREQ="${1:-392.225}"\n'
-        'exec python -m tetraear -f "$FREQ" -v --auto-start '
+        '# -v (DEBUG) genera moltissimi log e puo rallentare la GUI quando\n'
+        '# c-e segnale: di default NON e attivo. Per il debug: TETRAEAR_DEBUG=1\n'
+        'VERBOSE=""\n'
+        '[ -n "${TETRAEAR_DEBUG:-}" ] && VERBOSE="-v"\n'
+        'exec python -m tetraear -f "$FREQ" $VERBOSE --auto-start '
         '>> "logs/console_${STAMP}.log" 2>&1\n'
     )
     try:

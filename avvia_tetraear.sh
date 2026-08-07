@@ -57,6 +57,13 @@ echo "============================================================"
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-# -v verbose · --auto-start avvia subito la cattura · aggiungi -m per sentire l'audio.
+# Di default NIENTE -v: il logging DEBUG e' enorme (ogni frame + ogni chiamata
+# al codec) e rallenta la GUI quando c'e' segnale. Per il debug dettagliato usa
+# './avvia_tetraear.sh <freq> --debug' oppure TETRAEAR_DEBUG=1.
+VERBOSE=""
+case "${2:-}" in --debug|-v|debug) VERBOSE="-v" ;; esac
+[ -n "${TETRAEAR_DEBUG:-}" ] && VERBOSE="-v"
+
+# --auto-start avvia subito la cattura · aggiungi -m per sentire l'audio.
 # L'output a schermo viene anche salvato nel file di console.
-python -m tetraear -f "$FREQ" -v --auto-start 2>&1 | tee "$CONSOLE_LOG"
+python -m tetraear -f "$FREQ" $VERBOSE --auto-start 2>&1 | tee "$CONSOLE_LOG"
