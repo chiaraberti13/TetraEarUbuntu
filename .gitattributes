@@ -1,0 +1,9 @@
+# Line endings coerenti su tutti i sistemi.
+# I file .bat DEVONO avere CRLF: cmd.exe puo' interpretare male i batch
+# con soli LF (goto/etichette). Gli script shell DEVONO avere LF.
+* text=auto
+*.bat text eol=crlf
+*.sh  text eol=lf
+*.py  text eol=lf
+*.md  text eol=lf
+*.svg text eol=lf
