@@ -1,41 +1,23 @@
-# Security Policy
+<p align="center"><img src="assets/banner.svg" alt="TetraEar" width="100%"></p>
 
-## Supported versions
+<p align="center"><a href="#-english">🇬🇧 English</a> · <a href="#-italiano">🇮🇹 Italiano</a></p>
 
-Security fixes are applied to the latest version on the default branch. Older
-commits, forks and unofficial builds are not supported unless explicitly
-documented.
+<p align="center"><img src="https://img.shields.io/badge/security-responsible%20disclosure-22D3EE?style=flat-square" alt="Responsible disclosure"></p>
 
-## Reporting a vulnerability
+<p align="center"><a href="README.md">Project README</a> · <a href="LICENSE">MIT Licence</a></p>
 
-Please report suspected vulnerabilities privately through
-[GitHub Security Advisories](https://github.com/chiaraberti13/TetraEarUbuntu/security/advisories/new).
+---
 
-Do not open a public issue for an unpatched vulnerability. Include, when
-possible:
+## 🇬🇧 English
 
-- the affected version or commit;
-- a clear description of the impact;
-- reproducible steps or a minimal proof of concept;
-- suggested mitigations, if known;
-- any relevant logs with credentials and personal data removed.
+Report vulnerabilities privately through [GitHub Security Advisories](https://github.com/chiaraberti13/TetraEarUbuntu/security/advisories/new). Include the affected commit, platform, hardware, reproducible steps and sanitized logs.
 
-Please allow reasonable time for investigation and remediation before public
-disclosure.
+Test only hardware, systems and signals you own or are legally authorized to analyze. Do not publish keys, intercepted content, device identifiers or personal data.
 
-## Scope
+---
 
-This policy covers vulnerabilities in TetraEar. Vulnerabilities in external
-dependencies or third-party services should also be reported to their
-maintainers. A dependency report may still be submitted here when it directly
-affects this project.
+## 🇮🇹 Italiano
 
-Testing must be performed only on systems and data you own or are explicitly
-authorized to test. Do not perform denial-of-service testing, access third-party
-data, degrade services, or use social engineering.
+Segnala privatamente le vulnerabilità tramite [GitHub Security Advisories](https://github.com/chiaraberti13/TetraEarUbuntu/security/advisories/new). Indica commit, piattaforma, hardware, passaggi riproducibili e log privati di dati sensibili.
 
-## Responsible use
-
-This policy does not grant authorization to test third-party infrastructure.
-Users remain responsible for complying with applicable laws, licences and
-written scopes of authorization.
+Esegui test esclusivamente su hardware, sistemi e segnali di tua proprietà o che sei legalmente autorizzata ad analizzare. Non pubblicare chiavi, contenuti intercettati, identificativi dei dispositivi o dati personali.
