@@ -1,23 +1,35 @@
-<p align="center"><img src="assets/banner.svg" alt="TetraEar" width="100%"></p>
+# Security Policy
 
-<p align="center"><a href="#-english">🇬🇧 English</a> · <a href="#-italiano">🇮🇹 Italiano</a></p>
+<p align="center"><a href="#english">🇬🇧 English</a> · <a href="#italiano">🇮🇹 Italiano</a></p>
 
-<p align="center"><img src="https://img.shields.io/badge/security-responsible%20disclosure-22D3EE?style=flat-square" alt="Responsible disclosure"></p>
+## English
+### Supported versions
+Security fixes target the latest maintained revision of this repository. For upstream code, also consult the upstream project's supported versions and advisories.
 
-<p align="center"><a href="README.md">Project README</a> · <a href="LICENSE">MIT Licence</a></p>
+### Scope
+Ubuntu/Debian and Windows installers, RTL-SDR setup, codec/tool downloads, diagnostic logs, configuration and uninstall/repair paths.
 
----
+### Reporting
+Do not open a public issue for an unpatched vulnerability. Use GitHub private vulnerability reporting / Security Advisories when available. Include affected commit/version, impact, reproducible steps or minimal proof of concept, platform/hardware assumptions and possible mitigations. Remove unrelated sensitive data.
 
-## 🇬🇧 English
+### Responsible and legal use
+Use the project only with devices, systems and signals you own or are explicitly authorized to receive, analyze or modify. Applicable radio, privacy and communications law takes precedence over project documentation.
 
-Report vulnerabilities privately through [GitHub Security Advisories](https://github.com/chiaraberti13/TetraEarUbuntu/security/advisories/new). Include the affected commit, platform, hardware, reproducible steps and sanitized logs.
+### Security requirements
+Never commit secrets or private captures. Treat device input, paths, downloaded archives, package sources and configuration as untrusted. Verify upstream sources where practical, use least privilege, and carefully review commands that install system components or access hardware. Do not publish decoded private communications, real recordings or identifiers in issues, fixtures or screenshots.
 
-Test only hardware, systems and signals you own or are legally authorized to analyze. Do not publish keys, intercepted content, device identifiers or personal data.
+## Italiano
+### Versioni supportate
+Le correzioni riguardano la revisione mantenuta più recente di questo repository. Per il codice upstream consulta anche versioni supportate e advisory del progetto originario.
 
----
+### Ambito
+Ubuntu/Debian and Windows installers, RTL-SDR setup, codec/tool downloads, diagnostic logs, configuration and uninstall/repair paths.
 
-## 🇮🇹 Italiano
+### Segnalazione
+Non aprire issue pubbliche per vulnerabilità non corrette. Usa la segnalazione privata / Security Advisories quando disponibile. Indica commit/versione, impatto, passaggi riproducibili o PoC minimo, assunzioni su piattaforma/hardware e mitigazioni, eliminando dati sensibili non necessari.
 
-Segnala privatamente le vulnerabilità tramite [GitHub Security Advisories](https://github.com/chiaraberti13/TetraEarUbuntu/security/advisories/new). Indica commit, piattaforma, hardware, passaggi riproducibili e log privati di dati sensibili.
+### Uso responsabile e legale
+Usa il progetto solo con dispositivi, sistemi e segnali che possiedi o che sei esplicitamente autorizzato a ricevere, analizzare o modificare. Le norme applicabili in materia radio, privacy e comunicazioni prevalgono sulla documentazione.
 
-Esegui test esclusivamente su hardware, sistemi e segnali di tua proprietà o che sei legalmente autorizzata ad analizzare. Non pubblicare chiavi, contenuti intercettati, identificativi dei dispositivi o dati personali.
+### Requisiti di sicurezza
+Non committare segreti o acquisizioni private. Considera non fidati input dei dispositivi, percorsi, archivi scaricati, sorgenti pacchetti e configurazione. Verifica le fonti upstream quando possibile, usa privilegi minimi e controlla attentamente i comandi che installano componenti di sistema o accedono all'hardware. Do not publish decoded private communications, real recordings or identifiers in issues, fixtures or screenshots.
