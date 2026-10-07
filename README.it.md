@@ -6,7 +6,7 @@
   <img src="https://img.shields.io/badge/status-active-F2C94C?style=flat-square" alt="Active">
   <img src="https://img.shields.io/badge/category-SDR%20%26%20RADIO-22D3EE?style=flat-square" alt="SDR and radio">
   <img src="https://img.shields.io/badge/stack-Python-8B949E?style=flat-square" alt="Python">
-  <img src="https://img.shields.io/badge/licence-MIT-2EA043?style=flat-square" alt="MIT">
+  <img src="https://img.shields.io/badge/licence-GPL--3.0-2EA043?style=flat-square" alt="GPL-3.0">
 </p>
 
 > Ambiente automatizzato per installare e utilizzare TetraEar con dispositivi RTL-SDR su Ubuntu, Debian e Windows.
