@@ -56,3 +56,12 @@ python install_windows.py
 ## Responsible use
 
 Use the software only in compliance with applicable law and with signals, systems and devices for which you hold the necessary authorization.
+
+## Comunità e collaborazione
+
+- [Come contribuire](CONTRIBUTING.md)
+- [Codice di condotta](CODE_OF_CONDUCT.md)
+- [Segnalazioni di sicurezza](SECURITY.md)
+- [Accessibilità e limiti delle verifiche](ACCESSIBILITY.md)
+- [Segnalare un problema o proporre un miglioramento](https://github.com/chiaraberti13/TetraEarUbuntu/issues/new/choose)
+- [Licenza del progetto](LICENSE)

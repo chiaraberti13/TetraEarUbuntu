@@ -14,12 +14,14 @@ This repository covers automation for installing and running TetraEar with RTL-S
 
 ### Setup
 ```bash
-git clone https://github.com/chiaraberti13/TetraEarUbuntu.git\ncd TetraEarUbuntu
+git clone https://github.com/chiaraberti13/TetraEarUbuntu.git
+cd TetraEarUbuntu
 ```
 
 ### Checks
 ```bash
-bash -n install_ubuntu.sh\npython -m compileall .
+bash -n install_ubuntu.sh
+python -m compileall .
 ```
 Test installer changes in a disposable environment where possible. Document packages, drivers, codec requirements, filesystem changes, supported OS versions and uninstall/repair behaviour.
 
@@ -41,12 +43,14 @@ Questo repository riguarda automation for installing and running TetraEar with R
 
 ### Setup
 ```bash
-git clone https://github.com/chiaraberti13/TetraEarUbuntu.git\ncd TetraEarUbuntu
+git clone https://github.com/chiaraberti13/TetraEarUbuntu.git
+cd TetraEarUbuntu
 ```
 
 ### Controlli
 ```bash
-bash -n install_ubuntu.sh\npython -m compileall .
+bash -n install_ubuntu.sh
+python -m compileall .
 ```
 Test installer changes in a disposable environment where possible. Document packages, drivers, codec requirements, filesystem changes, supported OS versions and uninstall/repair behaviour.
 
@@ -55,3 +59,13 @@ Rendi esplicite le modifiche di piattaforma/build, valida gli input esterni, usa
 
 ### Pull request
 Descrivi cosa cambia, perché, piattaforme/hardware interessati, test, impatto sicurezza/privacy, relazione con upstream e rollback. Si applica `CODE_OF_CONDUCT.md`.
+
+## Segnalazioni e verifica dei contributi
+
+Installazione e diagnostica di TetraEar con RTL-SDR.
+
+Usa i [modelli di segnalazione](https://github.com/chiaraberti13/TetraEarUbuntu/issues/new/choose) per bug, miglioramenti e barriere di accessibilità. Prima di aprire una nuova segnalazione verifica se ne esiste già una equivalente. Contesto utile: Sistema operativo Ubuntu, Debian o Windows, versione Python, hardware RTL-SDR e log anonimizzati.
+
+Per le modifiche, compila il modello di pull request e indica verifiche eseguite, esito e verifiche non eseguite con il motivo. Mantieni le istruzioni specifiche di questo progetto e la parità delle lingue già disponibili. Non allegare dati di produzione, credenziali o dati personali; usa esempi sintetici.
+
+Consulta [il codice di condotta](CODE_OF_CONDUCT.md), [la policy di sicurezza](SECURITY.md) e [le indicazioni di accessibilità](ACCESSIBILITY.md). Le vulnerabilità seguono esclusivamente il percorso descritto nella policy di sicurezza.
